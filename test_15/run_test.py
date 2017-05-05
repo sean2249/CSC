@@ -84,8 +84,8 @@ if __name__ == "__main__":
         
         t = datetime.now()
         log_token = '{:02}{:02}_{:02}{:02}{:02}'.format(t.month,t.day,t.hour,t.minute,t.second)
-        with open('log_{}'.format(log_token), 'w', encoding='utf8') as fp:
-            print('Log file = log_{}'.format(log_token))            
+        with open('log_{}.txt'.format(log_token), 'w', encoding='utf8') as fp:
+            print('Log file = log_{}.txt'.format(log_token))            
             for batch in log_files:
                 fp.write('\t'.join(batch))
                 fp.write('\n')
