@@ -1,7 +1,7 @@
 
 # coding: utf-8
 
-# In[3]:
+# In[1]:
 
 import os
 import re 
@@ -9,10 +9,26 @@ import jieba
 from bs4 import BeautifulSoup
 
 
-# In[4]:
+# In[10]:
 
-def runCharSegment(dataroot, outputfile):
-    if os.path.exists(outputfile):
+def runUdnSegment(dataroot, outputfile, action, pattern):
+    '''Extract UDN news, and ouput char-level segement file 
+    
+    Need to revise pattern regular experission 
+    
+    Args:
+        dataroot (str): the position of UDN news (recursive)
+        outputfile (str): the position of output file 
+        action (dict): parameter for seperate and segmentation-level 
+        pattern (rgex): pattern for kicking unwanted character 
+    Return: 
+        None
+    '''
+    
+    sep_method = action.get('sep_method', 'comma')
+    seg_level = action.get('seg_level', 'char')
+    
+    if os.path.exists(outputfile): 
         print('Clean %s' %(outputfile))
         os.remove(outputfile)
     
@@ -26,90 +42,26 @@ def runCharSegment(dataroot, outputfile):
                 with open(inputfile, 'rb') as fp:
                     data = fp.read().decode('big5-hkscs', 'ignore')
                     soup = BeautifulSoup(data)
+                    
                 content = contentExtract(soup)
-                seperateSeq = seperate(content)
-
-                with open(outputfile, 'a', encoding='utf8') as wp:
-                    wp.write(seperateSeq+'\n')
-
-
-# In[56]:
-
-def runWordSegment(dataroot, outputfile):
-    # Turn all the number into 0 for better nubmer count
-    
-    if os.path.exists(outputfile):
-        print('Clean %s' %(outputfile))
-        os.remove(outputfile)
-    
-    pattern = re.compile('TEXT')
-    for dirPath, dirName, filelist in os.walk(dataroot, topdown=False):
-        if pattern.search(dirPath):
-            print(dirPath)
-            for file in filelist:
-                inputfile = dirPath+'/'+file
-                with open(inputfile, 'rb') as fp:
-                    data = fp.read().decode('big5-hkscs', 'ignore')
-                    soup = BeautifulSoup(data)
-                content = contentExtract(soup)
-                seg = wordSegment(content)
+                seqs = seperateSeq(content, sep_method)
+                seqs_filter = filterSeq(seqs, pattern)
+                seg_string = transformSeq(seqs_filter, seg_level)
                 
+
                 with open(outputfile, 'a', encoding='utf8') as wp:
-                    wp.write(seg+'\n')
+                    wp.write(seg_string+'\n')
 
 
-# In[11]:
-
-def seperateSeq(seq):
-    pattern = re.compile('[，。！？]')
-    
-    pre_idx=0
-    output = []
-    for idx, ch in enumerate(seq):
-        if pattern.search(ch):
-            tmp = seq[pre_idx:idx+1]
-            output.append(tmp)
-            pre_idx = idx+1
-    
-#     print(pre_idx, len(seq))
-    if pre_idx<len(seq):
-        tmp = seq[pre_idx:len(seq)]
-        output.append(tmp)
-        
-    return output 
-
-
-# In[54]:
-
-def wordSegment(content):
-    segs = list(jieba.cut(content))
-    
-    for idx, seg in enumerate(segs):
-        if re.search('[0-9]', seg):
-            segs[idx] = '0'
-    
-    return ' '.join(segs)
-
-
-# In[7]:
-
-def extractStrOnly(element):
-    
-    flag = element.name
-    output = ''    
-    res = []
-    if flag!=None:
-        for item in element.contents:
-            output += extractStrOnly(item)
-    else:
-        return element.string
-    
-    return output
-
-
-# In[8]:
+# In[3]:
 
 def contentExtract(soup):
+    '''Extract the string content of website 
+    Args:
+        soup (Beatutifulsoup): website 
+    Return:
+        output (str): the string content of website
+    '''
     output = ''
     for pTxt in soup.find_all('p'):
         res = ''
@@ -127,42 +79,116 @@ def contentExtract(soup):
     return output
 
 
-# In[9]:
+# In[4]:
 
-def seperate(content):
-    seqs = content.split('\n')
+def seperateSeq(content, sep_method):
+    '''Seperate string into sub-sentence
+    Args:
+        content (str): website content 
+        sep_method (str): 'original' or 'comma'
+    Return:
+        output (list): sub-sentence
+    '''
     output = []
-    pattern = re.compile('[A-Za-z0-9.\s]')
-    for seq in seqs:
-        if len(seq)==0:
-            continue
-        
-        tmpSeq = seq[0]
-        preflag = 0
-        for ch in seq[1:]:
+    if sep_method == 'comma':
+        pattern = re.compile('[，。！？]')
+        content = ''.join(content.split('\n'))
+
+        pre_idx=0
+        for idx, ch in enumerate(content):
             if pattern.search(ch):
-                continue
-#                 if preflag ==0:
-#                     tmpSeq = tmpSeq+' '
-#                     preflag = 1
-#                 tmpSeq = tmpSeq+ch
-                
-            else:                
-                preflag=0
-                tmpSeq = tmpSeq + ' '+ ch
-        output.append(tmpSeq)
-        
+                tmp = content[pre_idx:idx+1]
+                output.append(tmp)
+                pre_idx = idx+1
+
+    #     print(pre_idx, len(seq))
+        if pre_idx<len(content):
+            tmp = content[pre_idx:len(content)]
+            output.append(tmp)
+    elif sep_method:
+        output = content.split('\n')
+    
+    return output 
+
+
+# In[16]:
+
+def filterSeq(lst, pattern):
+    '''Filter unwanted sequence based on pattern
+    Args:
+        lst (list): the list of website seperated content 
+        pattern (rgex): the pattern we don't want 
+    Return:
+        output (list): list after filter
+    '''
+    
+    output = [seq for seq in lst if not pattern.search(seq)]
+    
+    if not output:
+        return list()
+    
+    if output[0].find('】'): 
+        _ = output.pop(0)
+    
+    return output 
+
+
+# In[6]:
+
+def transformSeq(seqs, seg_level):
+    '''filter the line existed Unwatned pattern, and seperate the char with "space"
+    Args:
+        seqs (list): list from website 
+        seg_level: which lm-level ('word' OR 'char)
+    Return:
+        output (str): string which have been seperated by 'space'
+    '''
+    output = list()
+    if seg_level == 'word':
+        for seq in seqs:
+            segs = jieba.cut(seq)
+            output.append(' '.join(segs))            
+    elif seg_level == 'char':
+        for seq in seqs:
+            output.append(' '.join(seq))
     return '\n'.join(output)
 
 
-# In[57]:
+# In[7]:
+
+def runSinica(inputfile, outputfile):
+    with open(inputfile, 'r', encoding='utf8') as fp,    open(outputfile, 'w', encoding='utf8') as wp:
+        for line in fp:
+            data = line.strip('\n').split(' ')
+            output = []
+            for item in data:
+                tmp = item.split('|')
+                if len(tmp)==2:
+                    output.append(tmp[0])
+
+            wp.write(' '.join(output))
+            wp.write('\n')
+    #         print(' '.join(output))
+        
+
+
+# In[17]:
 
 if __name__=='__main__':
+    ptn = re.compile('[A-Za-z0-9.\s]')
+    par = {
+        'sep_method':'comma'
+        , 'seg_level':'char'}
+    
+    runUdnSegment(dataroot='G:/UDN/Files/', outputfile='G:/UDN/lm_data/UDN_0507Train.txt',
+                 action=par, pattern=ptn)
+    
+
 #     dataroot = '/home/kiwi/Documents/udn_data/Files/'
-    dataroot = 'G:/UDN/Files/'
-#     outputfile = 'all_content.txt'
-#     runCharSegment(dataroot,outputfile)
-    runWordSegment(dataroot,'./lm_data/seg_all.txt')
+#     runCharSegment(dataroot,outputfile,pattern)
+#     runWordSegment(dataroot,'./lm_data/seg_all.txt')
+#     inputfile = '/home/kiwi/udn_data/training/sinica.corpus.txt'
+#     runSinica(inputfile,'./lm_data/sinica_word.txt')
 
 
 # In[ ]:
