@@ -1,7 +1,7 @@
 import os
 import sys
 from datetime import datetime
-
+import csv 
 
 # System argument value
 #  sys_truth = sys.argv[1]
@@ -43,7 +43,7 @@ def run_eval(sys_truth, test_num):
 
     return (detail_path, sys_token)
 
-def getVal(filename, token):
+def getVal(filename):
     output = list()
     with open(filename, 'r', encoding='utf8') as fp:
         for idx,line in enumerate(fp,1):
@@ -78,23 +78,23 @@ if __name__ == "__main__":
                 sys.exit(0)
 
             (detail_filename, token) = run_eval(sys_file, TEST_NUM)
-            log_files.append(getVal(detail_filename, token))
-        
+            # log_files.append((getVal(detail_filename), token))
+            tmp = getVal(detail_filename)
+            tmp.insert(0, token)
+            log_files.append(tmp)
+            
         
         
         t = datetime.now()
         log_token = '{:02}{:02}_{:02}{:02}{:02}'.format(t.month,t.day,t.hour,t.minute,t.second)
-        with open('log_{}.txt'.format(log_token), 'w', encoding='utf8') as fp:
-            print('Log file = log_{}.txt'.format(log_token))            
-            for batch in log_files:
-                fp.write('\t'.join(batch))
-                fp.write('\n')
-            
-
-
-
-
-
+        with open('log_{}.csv'.format(log_token), 'w', encoding='utf8', newline='') as fp:
+            print('Log file = log_{}.csv'.format(log_token))            
+            writer = csv.writer(fp) 
+            writer.writerows(log_files)
+            # for batch,token in log_files:
+            #     fp.write(token+'\t')
+            #     fp.write('\t'.join(batch))
+            #     fp.write('\n')
 
     else:
         print('Usage: python3 **.py sys_truth_filename test_num ')

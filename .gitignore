@@ -6,6 +6,9 @@
 *.json
 *.xlsx
 *.swp
+nohup.out
+/pastCode/
+/other_people/
 
 # Compiled source #
 ###################
