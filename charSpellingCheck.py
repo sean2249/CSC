@@ -1,16 +1,16 @@
 
 # coding: utf-8
 
-# In[2]:
+# In[15]:
 
 # from model.case import CASE
-from model.lm import LM
-from model.ncm import NCM
+from model.model import LM, CASE, NCM
+
 
 import os 
 import pickle
 import math
-from collections import namedtuple, defaultdict
+from collections import defaultdict
 import re
 import pandas as pd 
 
@@ -18,10 +18,10 @@ import time
 import sys, getopt
 
 
-# In[27]:
+# In[2]:
 
-data_root = '/home/kiwi/udn_data/training_confusion/'
-# data_root = 'G:/UDN/training_confusion/'
+# data_root = '/home/kiwi/udn_data/training_confusion/'
+data_root = 'G:/UDN/training_confusion/'
 channel_filename = data_root+'channelModel.pkl'
 lm_filename = data_root+'sinica.corpus.seg.char.lm'
 # lm_filename = data_root+'trigram_2.lm'
@@ -32,58 +32,7 @@ con_filename = './extractUDN_prepost/all.csv'
 # candsExpand = CANDSEXPAND(ncmEx_filename)
 
 
-# In[28]:
-
-class CASE:
-    def __init__(self, sentence, addS=0):
-        self.query=[]
-        if addS==1:
-            if len(sentence)>0:
-                self.query.append('<s>')
-                self.query.extend(list(sentence))
-                self.query.append('</s>')
-        else:
-            self.query=list(sentence)
-        self.length = len(self.query)
-    def candsGet(self, ncm, candsExpandTag=0):
-        ncm_stats = namedtuple('ncm_prob', 'ch,prob')
-        self.cands = []
-        for idx,cur_ch in enumerate(self.query):
-            cur_cands = ncm.cand(cur_ch)
-            tmp =[]          
-            # Have more than one candidatae (Except me)
-            if len(cur_cands)>=1:
-                for cand in cur_cands:
-                    # Put original char to first
-                    if cand[0]==cur_ch:                        
-                        tmp.insert(0,ncm_stats(cand[0],cand[1]))
-                    else:
-                        tmp.append(ncm_stats(cand[0],cand[1]))
-            else:
-                tmp.append(ncm_stats(cur_ch,1))        
-            # ========  
-            # Others
-            # ========  
-            if candsExpandTag != 0:
-                prob_sample = 0.0000000005            
-                if idx==0: 
-                    pre_char='' 
-                else: 
-                    pre_char = self.query[idx-1]
-                if idx==self.length-1:                
-                    post_char='' 
-                else: 
-                    post_char=self.query[idx+1]            
-                for cand in cande.cand(pre_char,post_char,1):
-                    tmp.append(ncm_stats(cand, prob_sample)) 
-            # ========  
-            # Others
-            # ========  
-            
-            self.cands.append(tmp)
-
-
-# In[ ]:
+# In[3]:
 
 class CONFUSION:
     def __init__(self, filename, con_log_file):
@@ -130,17 +79,16 @@ class CONFUSION:
         
 
 
-# In[ ]:
+# In[17]:
 
 def viterbi_ng(seq, par, show=0):
     # LM,NCM required
     para = par.get('lmNcm_weight', None)
     ng_num = par.get('ngnum', None)
     
-    case = CASE(seq, 1)
-    case.candsGet(ncm)    
+    case = CASE(seq, ncm)
     
-    sect_named = namedtuple('sect_stat', 'score, length, idx, seq')
+#     sect_named = namedtuple('sect_stat', 'score, length, idx, seq')
     
     cands4all =[]
     pre_cand_lst = []
@@ -149,26 +97,26 @@ def viterbi_ng(seq, par, show=0):
         section = []
         if show==1:
             print('==========')
-            print(cur_idx, cur_ch, ' '.join([x.ch for x in case.cands[cur_idx]]))
-        
+            print(cur_idx, cur_ch, ' '.join([x[0] for x in case.cands[cur_idx]]))        
 
         if cur_idx==0 and cur_ch=='<s>':
             section.append({'from_to':'<s>', 'score':0.0, 'seq':['<s>'], 'idx_seq':[0]})
 
         elif cur_idx>0:                
+            # cand:[0] for cand_ch, [1] for cand_prob
             for cand_idx, cand in enumerate(case.cands[cur_idx]):
                 # Add global 
-                sect_ncm = math.log10(cand.prob)              
+                sect_ncm = math.log10(cand[1])              
             
                 batch = []
                 
                 # lm.scoring(list)
                 for pre_idx, pre_cand in enumerate(pre_cand_lst):
-                    batch_seq = pre_cand['seq'] + [cand.ch]
+                    batch_seq = pre_cand['seq'] + [cand[0]]
                     
                     # Compute before?
                     batch_lm = lm.scoring(batch_seq[-ng_num:], ng_num) + pre_cand['score']
-                    batch_score = (para[0]*batch_lm+para[1]*sect_ncm)
+                    batch_score = (para[0] * batch_lm + para[1] * sect_ncm)
                     
                     if show==1: 
                         print('Seq:%s\tpre:%.2f\tbLM:%.2f\tNCM:%.2f\tTotal:%.2f'                               %(batch_seq[-ng_num:], pre_cand['score'], batch_lm, sect_ncm, batch_score))
@@ -196,76 +144,7 @@ def viterbi_ng(seq, par, show=0):
     return result
 
 
-# In[ ]:
-
-def viterbi_ng_fix(seq, par, show=0):
-    # LM,NCM required
-    para = par.get('lmNcm_weight', None)
-    ng_num = par.get('ngnum', None)
-    
-    
-    ignore_idx = par.get('ignore_idx', None)
-    
-    case = CASE(seq, 1)
-    case.candsGet(ncm)    
-    
-    sect_named = namedtuple('sect_stat', 'score, length, idx, seq')
-    
-    cands4all =[]
-    pre_cand_lst = []
-    
-    for cur_idx, cur_ch in enumerate(case.query):  
-        section = []
-        if show==1:
-            print('==========')
-            print(cur_idx, cur_ch, ' '.join([x.ch for x in case.cands[cur_idx]]))
-        
-
-        if cur_idx==0 and cur_ch=='<s>':
-            section.append({'from_to':'<s>', 'score':0.0, 'seq':['<s>'], 'idx_seq':[0]})
-
-        elif cur_idx>0:                
-            for cand_idx, cand in enumerate(case.cands[cur_idx]):
-                # Add global 
-                sect_ncm = math.log10(cand.prob)              
-            
-                batch = []
-                
-                # lm.scoring(list)
-                for pre_idx, pre_cand in enumerate(pre_cand_lst):
-                    batch_seq = pre_cand['seq'] + [cand.ch]
-                    
-                    # Compute before?
-                    batch_lm = lm.scoring(batch_seq[-ng_num:], ng_num) + pre_cand['score']
-                    batch_score = (para[0]*batch_lm+para[1]*sect_ncm)
-                    
-                    if show==1: 
-                        print('Seq:%s\tpre:%.2f\tbLM:%.2f\tNCM:%.2f\tTotal:%.2f'                               %(batch_seq[-ng_num:], pre_cand['score'], batch_lm, sect_ncm, batch_score))
-                    
-                    ttt = list(pre_cand['idx_seq'])                    
-                    ttt.append(cand_idx)
-                
-                    batch_dict = {'from_to':batch_seq[-ng_num:], 'score':batch_score,                                   'seq':batch_seq, 'idx_seq':ttt}
-                    
-                    batch.append(batch_dict)               
-                
-                best = max(batch, key=lambda x:x['score'])
-                if show==1: 
-                    print('== Choose Seq:%s\t NCM:%.2f\tTotal:%.2f'                         %(best['from_to'], sect_ncm, best['score']))
-                                
-                section.append(best)
-                
-        pre_cand_lst = list(section)
-        cands4all.append(pre_cand_lst)
-    
-    winner = max(pre_cand_lst, key=lambda x:x['score'])
-    output = ''.join(winner['seq'][1:-1])
-        
-    result = dict(orig=seq, correct=output, log=cands4all, win=winner, cor_idx=winner['idx_seq'][1:-1])    
-    return result
-
-
-# In[ ]:
+# In[5]:
 
 def run_test(testfilename, resultname, par):    
     show = par.get('show',0)
@@ -295,36 +174,10 @@ def run_test(testfilename, resultname, par):
                 
 
 
-# def main(argv, par):
-#     if len(argv) < 3:
-#         print('Usage: python filename.py token test_file1 test_file2')
-#         sys.exit(1)
-#     else:
-#         data_length = len(argv)-2
-#         test_data = []
-# 
-#         token = argv[1]
-# 
-#         for idx, item in enumerate(argv[2:],1):
-#             test_data_batch = item
-#             print('%d/%d- loading %s...'\
-#                     %(idx, data_length, test_data_batch))
-#             if not(os.path.exists(test_data_batch)):
-#                 print('Unable to load file')
-#             else:
-#                 test_data.append(test_data_batch)
-#               
-#     for idx, batch_name in enumerate(test_data, 1):
-#         print('=========')
-#         print('Batch %d-%s' %(idx, batch_name))
-#         print('=========')
-#         result_name = './test_15/re_%s_%d.txt' %(str(token), idx)
-#         run_test(batch_name, result_name, par)
-
-# In[ ]:
+# In[6]:
 
 def debug_ncm(ch, append=None, value= 0.05, show=0):    
-    tt = ncm.cand(ch)
+    tt = ncm.get_cands(ch)
     if show==1:
         for d in tt:
             print(d)
@@ -337,7 +190,7 @@ def debug_ncm(ch, append=None, value= 0.05, show=0):
         return tt
 
 
-# In[ ]:
+# In[7]:
 
 def debug_lm(seq, ngnum=2):
     lst = seq.split()
@@ -345,7 +198,7 @@ def debug_lm(seq, ngnum=2):
         print(item, lm.scoring(item, ngnum))
 
 
-# In[ ]:
+# In[8]:
 
 def seperateSeq(seq):
     pattern = re.compile('[，。！]')
@@ -365,81 +218,7 @@ def seperateSeq(seq):
     return output 
 
 
-# In[ ]:
-
-def nnn(seq, show):
-    
-    case = CASE(seq, 1)  
-    case.candsGet(ncm)    
-
-    for cur_idx, cur_ch in enumerate(case.query):
-        
-        if show==1:
-            print('==========')
-            print(cur_idx, cur_ch, ' '.join([x.ch for x in case.cands[cur_idx]]))
-            
-        
-    
-    '''
-    Past 
-    '''
-        
-    sect_named = namedtuple('sect_stat', 'score, length, idx, seq')
-    
-    cands4all =[]
-    pre_cand_lst = []
-    
-    for cur_idx, cur_ch in enumerate(case.query):  
-        section = []
-        if show==1:
-            print('==========')
-            print(cur_idx, cur_ch, ' '.join([x.ch for x in case.cands[cur_idx]]))
-        
-
-        if cur_idx==0 and cur_ch=='<s>':
-            section.append({'from_to':'<s>', 'score':0.0, 'seq':['<s>'], 'idx_seq':[0]})
-
-        elif cur_idx>0:                
-            for cand_idx, cand in enumerate(case.cands[cur_idx]):
-                sect_ncm = math.log10(cand.prob)              
-            
-                batch = []
-                
-                # lm.scoring(list)
-                for pre_idx, pre_cand in enumerate(pre_cand_lst):
-                    batch_seq = pre_cand['seq'] + [cand.ch]
-                    
-                    # Compute before?
-                    batch_lm = lm.scoring(batch_seq[-ng_num:], ng_num) + pre_cand['score']
-                    batch_score = (para[0]*batch_lm+para[1]*sect_ncm)
-                    
-                    if show==1: 
-                        print('Seq:%s\tpre:%.2f\tbLM:%.2f\tNCM:%.2f\tTotal:%.2f'                               %(batch_seq[-ng_num:], pre_cand['score'], batch_lm, sect_ncm, batch_score))
-                    
-                    ttt = list(pre_cand['idx_seq'])                    
-                    ttt.append(cand_idx)
-                
-                    batch_dict = {'from_to':batch_seq[-ng_num:], 'score':batch_score,                                   'seq':batch_seq, 'idx_seq':ttt}
-                    
-                    batch.append(batch_dict)               
-                
-                best = max(batch, key=lambda x:x['score'])
-                if show==1: 
-                    print('== Choose Seq:%s\t NCM:%.2f\tTotal:%.2f'                         %(best['from_to'], sect_ncm, best['score']))
-                                
-                section.append(best)
-                
-        pre_cand_lst = list(section)
-        cands4all.append(pre_cand_lst)
-    
-    winner = max(pre_cand_lst, key=lambda x:x['score'])
-    output = ''.join(winner['seq'][1:-1])
-        
-    result = dict(orig=seq, correct=output, log=cands4all, win=winner, cor_idx=winner['idx_seq'][1:-1])    
-    return result
-
-
-# In[ ]:
+# In[9]:
 
 def batch(seq, par = {
         'lmNcm_weight':[0.7,0.3],
@@ -504,28 +283,7 @@ def batch(seq, par = {
 # 
 # lm.scoring('視障率',show=1)
 
-# In[ ]:
-
-# class NCM:
-#     def __init__(self, channel_filename):
-#         print('Loading channel model %s ...' %(channel_filename))
-#         with open(channel_filename, 'rb') as fp:
-#             self.table = pickle.load(fp, encoding='utf8')
-#         #  self.table = pickle.load(open(channel_filename,'rb'), encoding='utf8')
-#     def cand(self, cur_char, show=0):
-#         query_cands = []
-#         if cur_char in self.table:
-#             query_cands = self.table[cur_char].items()            
-            
-#         if show==1:
-#             for cands in query_cands:
-#                 print(cands)
-#         return query_cands
-#     def special_zero(self):
-        
-
-
-# In[ ]:
+# In[11]:
 
 lm = LM(lm_filename)
 ncm = NCM(channel_filename)
@@ -590,7 +348,7 @@ def t3(sys, par):
         token     = sys.argv[1]
         language_model = sys.argv[2]
         test_data = sys.argv[3]
-        par['ngnum'] = sys.argv[4]
+        par['ngnum'] = int(sys.argv[4])
         
         del lm 
         
@@ -602,16 +360,38 @@ def t3(sys, par):
 
 # In[ ]:
 
+def t4(sys, par):
+    global ncm
+    if len(sys.argv) < 4:
+        print('Usage: python filename.py token ncm_global channel_model test_data ')
+        sys.exit(1)
+    else:
+        token = sys.argv[1]
+        ncm_global = sys.argv[2]
+        channel_model = sys.argv[3]
+        test_data = sys.argv[4]
+        
+        del ncm
+        
+        ncm = NCM(channel_model, ncm_global)
+        
+        result_name = './test_15/re_{}.txt'.format
+               
+        run_test(test_data, result_name(token), par)
+
+
+# In[13]:
+
 if __name__=='__main__':
     par = {
         'lmNcm_weight':[0.7,0.3],
         'ngnum':3,
         'pre_con':False,
-        'con_log_file':'special_case4con.txt',
-        'show':0 
+        'con_log_file':'special_case4con.txt',        
+        'show':0
     }
     
-    t3(sys, par)
+    t4(sys,par)
     
     
 
