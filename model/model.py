@@ -24,6 +24,8 @@ class LM:
                 if len(seq)>=2:
                     (word, prob, backprob) = (tuple(seq[1].split()), float(seq[0]), 
                                         float(seq[2] if len(seq)==3 else 0.0))
+                    if len(word) > 3:
+                        break
                     self.table[word] = ngram_stats(prob, backprob)
     def begin(self,state):
         return ('<s>', state)
@@ -107,7 +109,7 @@ class CASE:
         self.query=[]
         self.query.append('<s>')
         self.query.extend(list(sentence))
-        self.query.append('</s>')
+        self.query.append('<s>')
             
         # get candidate
         self.cands = []

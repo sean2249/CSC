@@ -97,6 +97,6 @@ if __name__ == "__main__":
             #     fp.write('\n')
 
     else:
-        print('Usage: python3 **.py sys_truth_filename test_num ')
+        print('Usage: python3 **.py test_num sys_truth_filenames[seperate by space]')
         print('test_num: Dry=1 Test=2')
         sys.exit(0)

@@ -1,17 +1,16 @@
 
 # coding: utf-8
 
-# In[1]:
+# In[17]:
 
 from collections import namedtuple
-import pickle
 # import sys
 # import math
 # import re
 # from nltk import bigrams,trigrams
 
 
-# In[ ]:
+# In[36]:
 
 class LM:
     def __init__(self, lm_filename):
@@ -22,10 +21,9 @@ class LM:
             for line in fp:
                 seq = line.strip().split('\t')
                 if len(seq)>=2:
-                    (word, prob, backprob) = (tuple(seq[1]), float(seq[0]), 
+                    (word, prob, backprob) = (tuple(seq[1].split()), float(seq[0]), 
                                         float(seq[2] if len(seq)==3 else 0.0))
-                    if len(word)<3:
-                        self.table[word] = ngram_stats(prob, backprob)
+                    self.table[word] = ngram_stats(prob, backprob)
     def begin(self,state):
         return ('<s>', state)
     
@@ -74,55 +72,25 @@ class LM:
                 
         return score                        
 
-
-# In[96]:
-
 class NCM:
-    def __init__(self, channel_filename, ncm_global=[]):
+    def __init__(self, channel_filename):
         print('Loading channel model %s ...' %(channel_filename))
         with open(channel_filename, 'rb') as fp:
             self.table = pickle.load(fp, encoding='utf8')
-        self.ncm_global = ncm_global
-                        
-    def get_cands(self, cur_char):       
-        cand_dict = dict(self.table.get(cur_char,[]))
-        cur_prob = 1.0 if not cand_dict else cand_dict.pop(cur_char)
-        
-        if not self.ncm_global:        
-            query_cands = [(cur_char,cur_prob)] 
-            query_cands.extend(cand_dict.items())                
-        else:            
-            base = self.ncm_global * (1-len(cand_dict)) + len(cand_dict)
-            query_cands = [(cur_char, self.ncm_global/base)]
-            query_cands.extend((c,(1-self.ncm_global)/base) for c,p in cand_dict.items())
-   
+        #  self.table = pickle.load(open(channel_filename,'rb'), encoding='utf8')
+    def cand(self, cur_char, show=0):
+        query_cands = []
+        if cur_char in self.table:
+            query_cands = self.table[cur_char].items()            
+            
+        if show==1:
+            for cands in query_cands:
+                print(cands)
         return query_cands
 
-
-# In[ ]:
-
-class CASE:
-    def __init__(self, sentence, ncm):
-        assert type(sentence) == str, 'Input must be string'
-        assert len(sentence) > 0, 'Input must have content'
-        self.query=[]
-        self.query.append('<s>')
-        self.query.extend(list(sentence))
-        self.query.append('</s>')
-            
-        # get candidate
-        self.cands = []
-        for cur_ch in self.query:
-            self.cands.append(ncm.get_cands(cur_ch))
-
-
-# In[ ]:
+# In[37]:
 
 if __name__=='__main__':
-    #  lm = LM('../sinica.corpus.seg.char.lm')
+    lm = LM('../sinica.corpus.seg.char.lm')
 #     lm2 = LM2('../sinica.corpus.seg.char.lm')
-    import sys
-
-    lm = LM(sys.argv[1])
-    #  ncm_filename = 'G:/UDN/training_confusion/channelModel.pkl'
 

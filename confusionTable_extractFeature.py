@@ -1,13 +1,13 @@
 
 # coding: utf-8
 
-# ## Collect all confusion set
-
-# In[69]:
+# In[216]:
 
 import os 
 import sys
 import pickle
+# import sys
+import argparse
 import pandas as pd
 import csv
 from collections import defaultdict
@@ -19,11 +19,18 @@ import random
 import time 
 
 
-# ## Big unihan
+# In[32]:
 
-# In[2]:
+from gensim.models import KeyedVectors
 
-def bigUnihan_extract(filename):
+
+# # 0. Extract function 
+
+# ## bigunihan_frequency
+
+# In[3]:
+
+def extract_bigUnihan(filename):
     df = pd.read_csv(filename, sep='|', low_memory=False)
     df = df[['char','kFrequency']].set_index('char')
     df = df[~pd.isnull(df.kFrequency)]
@@ -31,55 +38,11 @@ def bigUnihan_extract(filename):
     return df.to_dict()['kFrequency']
 
 
-# ## SIGHAN_char_information
-
-# In[3]:
-
-def shape_compare_SIGHAN(ch_x, ch_y):
-    '''
-    return (similar, 同部首同筆畫數)
-    '''
-    cands1 = shape_SIGHAN.get(ch_x, [])
-    try:
-        cands2 = sound_SIGHAN.loc[ch_x].同部首同筆畫數
-        if type(cands2)==float:
-            cands2 = []
-    except KeyError:
-        cands2 = []
-    
-    out1 = 1 if ch_y in cands1 else 0
-    out2 = 1 if ch_y in cands2 else 0
-    
-    return (out1, out2)
-
-
-# In[4]:
-
-def sound_compare_SIGHAN(ch_x, ch_y):
-    '''
-    4. 同音同調
-    3. 同音異調
-    2. 近音同調
-    1. 近音異調
-    0 Not Found  
-    '''
-    try:
-        row = sound_SIGHAN.loc[ch_x]
-        for idx, col in enumerate(row[:-1]):
-            if type(col)==str and col.find(ch_y)!=-1:
-                return 4-idx
-                break
-        else:
-            return 0
-    except KeyError:
-        return 0
-
-
 # ## unihan.csv (注音跟倉頡)
 
-# In[5]:
+# In[6]:
 
-def unihan_extract(unihan_filename):
+def extract_unihan(unihan_filename):
     global dicBPMF, dicPhone, dicCangjie, dicCangjie2char
     with open(unihan_filename, 'r', encoding='utf8') as csvfile:
         spamreader = csv.reader(csvfile, delimiter=',', quotechar='"')
@@ -99,44 +62,9 @@ def unihan_extract(unihan_filename):
                     dicCangjie2char[cj[i:]] += [char]
 
 
-# ## Big Unihan.csv
+# ### Unihan: sound similar
 
-# ## zwt.titles.txt (字典)
-
-# In[6]:
-
-def zwtTitle_train(lines):
-    d = defaultdict(lambda: 0)
-    for word in lines:
-        d[word.strip()] += 1
-    #d[word.strip().decode('utf-8')[:2]] += 1
-    #print word.strip().decode('utf-8')[:2]
-    return d
-
-
-# ## radical.txt (部首)
-
-# In[7]:
-
-def radicalDic(lines):
-    dicRadicalnum = defaultdict(list)
-    dicRadical = defaultdict(list)
-    for line in lines:
-        for char in line[5:].strip().split('|'):
-            dicRadical[char] += [line[:4]]
-            dicRadicalnum[line[:4]] += [char]
-    return dicRadicalnum, dicRadical
-
-
-# In[8]:
-
-def shape_similar(char):
-    return list(set(ch for rnum in dicRadical[char] for ch in dicRadicalnum[rnum]))
-
-
-# # Tone extraction
-
-# In[9]:
+# In[10]:
 
 def sound_extract_same(char):
     '''
@@ -145,7 +73,7 @@ def sound_extract_same(char):
     return list(set(ch for ph in dicBPMF[char] for ch in dicPhone[ph]))
 
 
-# In[10]:
+# In[11]:
 
 def sound_extract_tone(char):
     '''
@@ -165,7 +93,7 @@ def sound_extract_tone(char):
         
 
 
-# In[11]:
+# In[12]:
 
 def sound_extract_finalConsonant(char, toneKeep=True):
     '''
@@ -204,7 +132,7 @@ def sound_extract_finalConsonant(char, toneKeep=True):
     return output
 
 
-# In[12]:
+# In[13]:
 
 def sound_extract_similartConsonant(char, toneKeep=True):
     '''
@@ -284,10 +212,11 @@ def sound_extract_similartConsonant(char, toneKeep=True):
     return output if len(output)>0 else []
 
 
-# # Cangjie Extraction (from UNIHAN)
+# ### Unihan: same cangjie
 
-# In[13]:
+# In[14]:
 
+# No use
 def cangjie_extract_same(char):
     cang = dicCangjie[char]
     if len(cang) > 0:
@@ -299,61 +228,44 @@ def cangjie_extract_same(char):
     return list(output)
 
 
-# In[14]:
+# ## zwt.titles.txt (字典)
 
-def cangjie_compare_unihan(ch_x,ch_y):
-    '''
-    Compare the cangjie between two character
-    applied LCS to check whether the two chars have similar cangjie code 
-    '''
-    
-    def lcs(xstr, ystr):
-        """
-        >>> lcs('thisisatest', 'testing123testing')
-        'tsitest'
-        """
-        if not xstr or not ystr:
-            return ""
-        x, xs, y, ys = xstr[0], xstr[1:], ystr[0], ystr[1:]
-        if x == y:
-            return x + lcs(xs, ys)
-        else:
-            return max(lcs(xstr, ys), lcs(xs, ystr), key=len)
-    
-    cang_x = dicCangjie.get(ch_x,[])
-    cang_y = dicCangjie.get(ch_y,[])
-    
-    if len(cang_x)==0 or len(cang_y)==0:
-        return 0
-    else:
-        cang_x == cang_x[0]
-        cang_y == cang_y[0]
-    
-    if cang_x == cang_y:
-        return 2
-    else:
-        lcs_length = len(lcs(cang_x, cang_y))
-        if len(cang_x) == 2:
-            if (lcs_length == 1 and len(cang_y)==2)            or (lcs_length == 2 and len(cang_y)==3):
-                return 1
-        elif len(cang_x) == 3:
-            if lcs_length == 2 and len(cang_y)<=4:
-                return 1
-        elif len(cang_x) == 4:
-            if lcs_length == 3 and len(cang_y)>=3:
-                return 1
-        elif len(cang_y) == 5:
-            if lcs_length == 4 and len(cang_y)==4:
-                return 1
-    
-    return 0     
+# In[7]:
+
+def extract_zwtTitle(lines):
+    d = defaultdict(lambda: 0)
+    for word in lines:
+        d[word.strip()] += 1
+    #d[word.strip().decode('utf-8')[:2]] += 1
+    #print word.strip().decode('utf-8')[:2]
+    return d
+
+
+# ## radical.txt (部首)
+
+# In[8]:
+
+def radicalDic(lines):
+    dicRadicalnum = defaultdict(list)
+    dicRadical = defaultdict(list)
+    for line in lines:
+        for char in line[5:].strip().split('|'):
+            dicRadical[char] += [line[:4]]
+            dicRadicalnum[line[:4]] += [char]
+    return dicRadicalnum, dicRadical
+
+
+# In[9]:
+
+def shape_similar(char):
+    return list(set(ch for rnum in dicRadical[char] for ch in dicRadicalnum[rnum]))
 
 
 # ## Error_correct pair
 
-# In[15]:
+# In[16]:
 
-def extractPairs(filelist):
+def extract_pairs(filelist):
     for filename, path in filelist.items():
         print('== Filename: {}'.format(filename))
         '''
@@ -431,14 +343,14 @@ def extractPairs(filelist):
             yield (filename, ch_dict, word_dict)
 
 
-# ## Confusion Sentnece (from SIGHAN)
-
+# ## Confusion Sentnece 
+# 
 # 1. Bakeoff-2013 not work
 # 2. sequence error not append 
 
-# In[16]:
+# In[17]:
 
-def extractSentence(filelist):
+def extract_sentences(filelist):
     for filename, path in filelist.items():
         print('== Filename: {}'.format(filename))
         
@@ -509,37 +421,30 @@ def extractSentence(filelist):
         yield (filename, ch_dict, word_dict, seq_dict)
 
 
-# ## The other 
+# # 1. Extract from file
 
-# In[ ]:
-
-
-
-
-# # ALL
-
-# In[17]:
+# In[18]:
 
 # dataroot = 'G:/UDN/training_confusion/{}/'.format
 dataroot = '/home/kiwi/udn_data/training_confusion/{}/'.format
 
 
-# # * Char information
+# ## * Char information
 
-# In[18]:
+# In[19]:
 
 section_label = 'char_information'
 filelist = dict((file,dataroot(section_label)+file) for file in os.listdir(dataroot(section_label)))
 
 
-# In[19]:
+# In[20]:
 
 
 dicBPMF = defaultdict(list)
 dicPhone = defaultdict(list)
 dicCangjie = defaultdict(list)
 dicCangjie2char = defaultdict(list)
-unihan_extract(filelist['unihan.csv'])
+extract_unihan(filelist['unihan.csv'])
 
 sound_SIGHAN = pd.read_csv(
     filelist['Bakeoff2013_CharacterSet_SimilarPronunciation.txt'], 
@@ -548,63 +453,224 @@ shape_SIGHAN = pd.read_csv(
     filelist['Bakeoff2013_CharacterSet_SimilarShape.txt'], \
     sep=',', index_col=0, names=['cands']).to_dict()['cands']
 
-voc = zwtTitle_train(open(filelist['zwt.titles.txt'], encoding='utf8').readlines())
+voc = extract_zwtTitle(open(filelist['zwt.titles.txt'], encoding='utf8').readlines())
 
 dicRadicalnum, dicRadical = radicalDic(
     open(filelist['radical.txt'], 'r', encoding='utf8').readlines())
 
-dicFreq = bigUnihan_extract(filelist['unihan_utf8_new.csv'])
+dicFreq = extract_bigUnihan(filelist['unihan_utf8_new.csv'])
 
 
-# # * Error_corr_pair
+# ## * Error_corr_pair
 
-# In[20]:
+# In[21]:
 
 section_label = 'error_corr_pair'
 
 
-# In[21]:
+# In[22]:
 
 filelist = dict((file,dataroot(section_label)+file) for file in os.listdir(dataroot(section_label)))
 confusion_pairs = dict()
-# confusion_pairs[special] = extractPairs_udn
-for filename, ch_dict, word_dict in extractPairs(filelist):
+# confusion_pairs[special] = extract_pairs_udn
+for filename, ch_dict, word_dict in extract_pairs(filelist):
     print('ch_dict:{}\tword_dict:{}\n'.format(len(ch_dict),len(word_dict)))
     confusion_pairs[filename] = (ch_dict,word_dict)
 
 
-# # * Error_corr_sentence
+# ## * Error_corr_sentence
 
-# In[22]:
+# In[23]:
 
 section_label = 'error_corr_sentence'
 filelist = dict((file,dataroot(section_label)+file) for file in os.listdir(dataroot(section_label)))
 unwated_file = filelist.pop('big5')
 
 confusion_sentences = dict()
-for filename, ch_dict, word_dict, seq_dict in extractSentence(filelist):
+for filename, ch_dict, word_dict, seq_dict in extract_sentences(filelist):
     print('ch_dict:{}\tword_dict:{}\n'.format(len(ch_dict),len(word_dict)))
     confusion_sentences[filename] = (ch_dict,word_dict)
 
 
-# # * Char_probability
+# ## * Char_probability (Language model)
 
-# In[49]:
+# In[24]:
 
-from model.lm import LM
+from model.model import LM
 
-filename = '/home/kiwi/udn_data/training_confusion/sinica.corpus.seg.char.lm'
+filename = dataroot('sinica.corpus.seg.char.lm')[:-1]
 lm = LM(filename)
 
 
-# In[51]:
+# ## * POS (CKIP)
 
-lm.scoring('地')
+# In[26]:
+
+section_label = 'pos'
+filelist = dict((file,dataroot(section_label)+file) for file in os.listdir(dataroot(section_label)))
 
 
-# # Confusion_training 
+# In[27]:
 
-# In[23]:
+pos_dict = defaultdict(set)
+
+idx = 0
+with open(filelist['CKIP_Dictionary_UTF8.txt'], 'r', encoding='utf8') as fp:
+    # Ignore POS contain '!'
+    for line in fp:
+        data = line.split()
+        idx += 1
+        if len(data[0])==1:
+            pos_tag = data[2] if data[2].find('!')<0 else data[2][1:]
+            pos_dict[data[0]].add(pos_tag)
+        else:            
+            break
+        
+
+                
+
+
+# ch_x, ch_y = '的','得'
+
+# pos_x = pos_dict[ch_x]
+
+# pos_x
+
+# pos_y = pos_dict[ch_y]
+
+# pos_y
+
+# dd = {('Caa','Cab'):'C'}
+
+# In[ ]:
+
+
+
+
+# In[29]:
+
+def pos_simplify(pos_tags, level=1):
+    pass
+    
+    
+    output = set()    
+    for p in pos_tags:
+        pass
+
+
+# # same common
+# if pos_y.intersection(pos_x):    
+#     print('y')
+#     
+# # Simplified common 
+# elif :
+# 
+# # basic common 
+# elif :
+
+# 1. 取前兩碼，不足則全取
+# 2. Daa != Dab
+# 3. Nc != Ncd
+# 4. Neu, Nes, Nep, Neqa, Neqb 保留
+# 5. T 取一碼
+# 6. VA != VAC 
+# 7. VH != VHC
+
+# ''' pandas.Dataframe
+# df = pd.read_csv(filelist['CKIP_Dictionary_UTF8.txt'], sep='\t', header=None, names=['title','n1','pos','n2','pronunciation','def'])
+# pos_df = df[df.apply(lambda x:len(x['title'])==1, axis=1)]
+# '''
+
+# ## fasttext 
+
+# In[100]:
+
+section_label = 'fasttext'
+filelist = dict((file,dataroot(section_label)+file) for file in os.listdir(dataroot(section_label)))
+
+
+# In[150]:
+
+# GOOD
+fasttext_model = KeyedVectors.load_word2vec_format(filelist['UDN.doc.char.skipgram.vec'])
+
+
+# ## TF-IDF (UDN)- NOT USE
+
+# In[64]:
+
+def load_file(filepath):
+    with open(filepath, 'r') as fp:
+        for line in fp:
+            yield line.strip().split()
+
+
+# In[84]:
+
+def tf_idf(N, tf, df):
+    return tf * math.log(N / df)
+
+
+# In[190]:
+
+section_label = 'tfidf'
+filelist = dict((file,dataroot(section_label)+file) for file in os.listdir(dataroot(section_label)))
+
+
+# # 2. Compare function
+
+# In[55]:
+
+def fasttext_compare(ch_x, ch_y):
+    try:
+        return fasttext_model.similarity(ch_x, ch_y)
+    except KeyError:
+        return 0.0
+
+
+# In[4]:
+
+def shape_compare_SIGHAN(ch_x, ch_y):
+    '''
+    return (similar, 同部首同筆畫數)
+    '''
+    cands1 = shape_SIGHAN.get(ch_x, [])
+    try:
+        cands2 = sound_SIGHAN.loc[ch_x].同部首同筆畫數
+        if type(cands2)==float:
+            cands2 = []
+    except KeyError:
+        cands2 = []
+    
+    out1 = 1 if ch_y in cands1 else 0
+    out2 = 1 if ch_y in cands2 else 0
+    
+    return (out1, out2)
+
+
+# In[5]:
+
+def sound_compare_SIGHAN(ch_x, ch_y):
+    '''
+    4. 同音同調
+    3. 同音異調
+    2. 近音同調
+    1. 近音異調
+    0 Not Found  
+    '''
+    try:
+        row = sound_SIGHAN.loc[ch_x]
+        for idx, col in enumerate(row[:-1]):
+            if type(col)==str and col.find(ch_y)!=-1:
+                return 4-idx
+                break
+        else:
+            return 0
+    except KeyError:
+        return 0
+
+
+# In[56]:
 
 def sound_compare_unihan(ch_x,ch_y):
     if ch_y in sound_extract_same(ch_x):
@@ -625,173 +691,174 @@ def shape_compare_unihan(ch_x,ch_y):
         return 0
 
 
-# In[58]:
+# In[15]:
+
+def cangjie_compare_unihan(ch_x,ch_y):
+    '''
+    Compare the cangjie between two character
+    applied LCS to check whether the two chars have similar cangjie code 
+    '''
+    
+    def lcs(xstr, ystr):
+        """
+        >>> lcs('thisisatest', 'testing123testing')
+        'tsitest'
+        """
+        if not xstr or not ystr:
+            return ""
+        x, xs, y, ys = xstr[0], xstr[1:], ystr[0], ystr[1:]
+        if x == y:
+            return x + lcs(xs, ys)
+        else:
+            return max(lcs(xstr, ys), lcs(xs, ystr), key=len)
+    
+    cang_x = dicCangjie.get(ch_x,[])
+    cang_y = dicCangjie.get(ch_y,[])
+    
+    if len(cang_x)==0 or len(cang_y)==0:
+        return 0
+    else:
+        cang_x == cang_x[0]
+        cang_y == cang_y[0]
+    
+    if cang_x == cang_y:
+        return 2
+    else:
+        lcs_length = len(lcs(cang_x, cang_y))
+        if len(cang_x) == 2:
+            if (lcs_length == 1 and len(cang_y)==2)            or (lcs_length == 2 and len(cang_y)==3):
+                return 1
+        elif len(cang_x) == 3:
+            if lcs_length == 2 and len(cang_y)<=4:
+                return 1
+        elif len(cang_x) == 4:
+            if lcs_length == 3 and len(cang_y)>=3:
+                return 1
+        elif len(cang_y) == 5:
+            if lcs_length == 4 and len(cang_y)==4:
+                return 1
+    
+    return 0     
+
+
+# # 3. Compare between character
+
+# In[225]:
 
 def comparison4confusion(ch_chunk):
+    '''Similarity between two characters
+    * sound unihan 
+    * shape unihan
+    * cangjie unihan
+    * sound SIGHAN
+    * shape SIGHAN
+    
+    * shape SIGHAN2
+    * frequency bigUnihan
+    * lm of ch_x
+    * lm of ch_y
+    
+    * fasttext 
+    
+    * many,many confusion pairs
+    
+    Args:
+        ch_chunk (tuple,list): ch_chunk[0]=ch_x, ch_chunk[1]=ch_y
+    Return:
+        score (float): score of similariy 
+        log (list): features of the similairy between two characters    
+    '''
+    
     ch_x = ch_chunk[0]
     ch_y = ch_chunk[1]
     
     log = list()
     score = 0.0
     
-    # MaxScore = 36 (pair/sentence count:5)
-    
+    # 0. 4 3 2 1 0
     tmp = sound_compare_unihan(ch_x,ch_y)
     log.append(tmp)
     score += tmp
     
+    # 1. 1 0 
     tmp = shape_compare_unihan(ch_x,ch_y)
     log.append(tmp)
     score += tmp
     
+    # 2. 2 1 0 
     tmp = cangjie_compare_unihan(ch_x,ch_y)
     log.append(tmp)
     score += tmp
 
+    # 3. 4 3 2 1 0
     tmp = sound_compare_SIGHAN(ch_x,ch_y)
     log.append(tmp)
     score += tmp
 
-    
+    # 4. 1 0 / 1 0 
     tmp = shape_compare_SIGHAN(ch_x,ch_y)
     log.extend(tmp)
     score = score + tmp[0] + tmp[1]
     
-    tmp = (5.0-dicFreq.get(ch_y,5))
+    # 5. 4 3 2 1 0
+    tmp = (5-dicFreq.get(ch_y,5))
     log.append(tmp)
-    score += tmp    
+    score += tmp        
     
+    
+    
+    # 7. float 
     # log probability 
     tmp = lm.scoring(ch_x)
     log.append(tmp)
-    score -= tmp
+#     score -= tmp
     
+    # 8. float 
     # log probability 
     tmp = lm.scoring(ch_y)
     log.append(tmp)
-    score -= tmp
-    
+#     score -= tmp
+        
+    # 9. fasttext
+    # Probability 
+    tmp = fasttext_compare(ch_x, ch_y)
+    log.append(tmp)
+    score += tmp*10
+        
+    # Last
     evidence = []
-    for i in [confusion_pairs.items(), confusion_sentences.items()]:
-        tmp = 0
+    tmp = 0
+    for i in [confusion_pairs.items(), confusion_sentences.items()]:        
         for filename, (ch_dict,_) in i:
             if ch_y in ch_dict.get(ch_x,[]):
                 tmp += 1
                 evidence.append(filename)
-                score += 1
-        
-        log.append(tmp)
-    log.append(evidence)
+                score += 1        
+    log.append(tmp)
     
-
+    # Last: Existed confusion pairs
+    log.append(evidence)    
+    
     return (score,log)
 
 
-# In[43]:
+# In[120]:
 
-confusion_pairs['1新編常用錯別字門診.txt'][0]['事']
+# confusion_pairs['1新編常用錯別字門診.txt'][0]
 
 
-# In[59]:
+# In[227]:
 
-comparison4confusion(('事','是'))
+# comparison4confusion(('事','事'))
 
 
 # # Char_comparison
 
-# In[25]:
-
-def comparison(ch_x, ch_y):
-    print('=== Comparison')
-    print(ch_x, ch_y)
-    '''
-    相似音的處理
-    sound_extract_same
-    sound_extract_tone
-    sound_extract_similartConsonant
-    sound_extract_finalConsonant
-
-    同音同調 同音異調 異音同調 異音異調
-    '''
-        
-        
-    print('\n=== Sound similar (from unihan)')
-    print(sound_compare_unihan(ch_x,ch_y))
-    
-    '''
-    shape_similar
-    '''
-    print('\n=== Shape similar (from radical)')
-    print(shape_compare_unihan(ch_x,ch_y))
-
-    '''
-    cangjie_compare
-    2 same cangjie code 
-    1 similar cangjie code 
-    0 nothing special
-    '''
-    print('\n=== Cangjie (from unihan)')
-    print( cangjie_compare_unihan(ch_x,ch_y))
-        
-    '''
-    SIGHAN
-    '''
-    print('\n=== SIGHAN Data (sound)')
-    print(sound_compare_SIGHAN(ch_x, ch_y))
-    
-
-    print('\n=== SIGHAN Data (shape)')
-    print(shape_compare_SIGHAN(ch_x,ch_y))
-#     if t[0]==1:
-#         print('Similar shape')
-#     if t[1]==1:
-#         print('同部首同筆畫數')
-    
-
-    '''
-    Error-correct pair 
-    'filename': (ch_dict,word_dict)
-    '''
-    print('\n=== Error-correct pair')
-    for filename, (ch_dict,_) in confusion_pairs.items():
-        if ch_y in ch_dict.get(ch_x,[]):
-            print(filename)
-
-    '''
-    Error-correct sentence 
-    'filename': (ch_dict, word_dict)
-    '''
-    print('\n=== Error-correct sentence')
-    for filename, (ch_dict,_) in confusion_sentences.items():
-        if ch_y in ch_dict.get(ch_x,[]):
-            print(filename)
-
-
-# In[26]:
-
-# ch_x = '相'
-
-# ch_y = random.choice(list(rr))
-
-# comparison(ch_x,ch_y)
-
-# ch_x = random.choice(sound_SIGHAN.index)
-# ch_y = random.choice(sound_SIGHAN.index)
-
-# comparison(ch_x,ch_y)
-
-
-# In[64]:
+# In[217]:
 
 def extractFeature(outputfilename, process_cnt, test=0):
-    if test == 0:
-        ch_n_label = set(dicBPMF.keys()).union(set(sound_SIGHAN.index))
-    else:        
-        ch_n_label = random.choices(list(ch_label),k=test)
-
-    # %%timeit -n 1 -r 1
-
-    # pool_size=multiprocessing.cpu_count()
+    ch_label = set(dicBPMF.keys()).union(set(sound_SIGHAN.index))
+    ch_n_label = random.choices(list(ch_label),k=test) if test>0 else ch_label    
 
     bigDict = defaultdict(dict)
 
@@ -799,7 +866,6 @@ def extractFeature(outputfilename, process_cnt, test=0):
     with multiprocessing.Pool(processes=process_cnt) as pool:
         for ch_x in ch_n_label:
             ch_n_inside = list(ch_n_label)
-
             ch_n_inside.remove(ch_x)
 
             ch_chunk = [(ch_x, ch_y) for ch_y in ch_n_inside]
@@ -807,26 +873,30 @@ def extractFeature(outputfilename, process_cnt, test=0):
             scores = pool.map(comparison4confusion, ch_chunk)
 
             for idx,(_,ch_y) in enumerate(ch_chunk):
-                if scores[idx][0]>0.0:
-    #             if scores[idx] >= 0:
+                if scores[idx][0]>5.0:
                     bigDict[ch_x][ch_y] = scores[idx]
-            bigDict[ch_x][ch_x] = (30,[])
 
     with open(outputfilename, 'wb') as fp:
         pickle.dump(bigDict,fp)
     
     print(time.clock()-start_time)
+
+
+# In[218]:
+
+def process_command():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--output', required=True)
+    parser.add_argument('--process', type=int, default=8)
+    parser.add_argument('--count', type=int, default=0)
     
+    return parser.parse_args()
 
 
-# In[72]:
+# In[215]:
 
 if __name__=="__main__":
-    if len(sys.argv) == 3:
-        extractFeature(
-            outputfilename=sys.argv[1], 
-            process_cnt=sys.argv[2], 
-            test=5)
-    else:
-        sys.exit(0)
+    args = process_command()
+    
+    extractFeature(args.output, args.process, args.count)
 

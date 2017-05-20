@@ -5,11 +5,11 @@
 
 import os
 import re 
-import sys 
-from bs4 import BeautifulSoup
 import jieba
+from bs4 import BeautifulSoup
 
-# In[32]:
+
+# In[22]:
 
 def runUdnSegment(dataroot, outputfile, action, unwanted_ptn):
     '''Extract UDN news, and ouput char-level segement file 
@@ -31,12 +31,14 @@ def runUdnSegment(dataroot, outputfile, action, unwanted_ptn):
     if os.path.exists(outputfile): 
         print('Clean %s' %(outputfile))
         os.remove(outputfile)
-
+    
     pattern = re.compile('TEXT')
+    
     for dirPath, dirName, filelist in os.walk(dataroot, topdown=False):
         if pattern.search(dirPath):        
             print(dirPath)
             for file in filelist:
+
                 inputfile = dirPath+'/'+file
     #             print(inputfile)
                 with open(inputfile, 'rb') as fp:
@@ -44,15 +46,17 @@ def runUdnSegment(dataroot, outputfile, action, unwanted_ptn):
                     soup = BeautifulSoup(data, 'lxml')
                     
                 content = contentExtract(soup)
-                seqs = seperateSeq(content, sep_method)
-                seqs_filter = filterSeq(seqs, unwanted_ptn)
-                seg_string = transformSeq(seqs_filter, seg_level)
+#                 seqs = seperateSeq(content, sep_method)
+#                 seqs_filter = filterSeq(seqs, unwanted_ptn)
+#                 seg_string = transformSeq(seqs_filter, seg_level)
+                seg_string = transformSeq(content, seg_level)
+
                 
                 with open(outputfile, 'a', encoding='utf8') as wp:
                     wp.write(seg_string+'\n')
 
 
-# In[15]:
+# In[3]:
 
 def contentExtract(soup):
     '''Extract the string content of website 
@@ -78,7 +82,7 @@ def contentExtract(soup):
     return output
 
 
-# In[16]:
+# In[4]:
 
 def seperateSeq(content, sep_method):
     '''Seperate string into sub-sentence
@@ -110,7 +114,7 @@ def seperateSeq(content, sep_method):
     return output 
 
 
-# In[17]:
+# In[5]:
 
 def filterSeq(lst, pattern):
     '''Filter unwanted sequence based on pattern
@@ -132,7 +136,7 @@ def filterSeq(lst, pattern):
     return output 
 
 
-# In[18]:
+# In[24]:
 
 def transformSeq(seqs, seg_level):
     '''filter the line existed Unwatned pattern, and seperate the char with "space"
@@ -150,10 +154,10 @@ def transformSeq(seqs, seg_level):
     elif seg_level == 'char':
         for seq in seqs:
             output.append(' '.join(seq))
-    return '\n'.join(output)
+    return ' '.join(output)
 
 
-# In[19]:
+# In[7]:
 
 def runSinica(inputfile, outputfile):
     with open(inputfile, 'r', encoding='utf8') as fp,    open(outputfile, 'w', encoding='utf8') as wp:
@@ -171,16 +175,18 @@ def runSinica(inputfile, outputfile):
         
 
 
-# In[33]:
+# In[25]:
 
 if __name__=='__main__':
-    ptn = re.compile('[A-Za-z0-9.\s]')
+    ptn = re.compile('[1]')
     par = {
         'sep_method':'comma'
         , 'seg_level':'char'}
-
-    data_root = sys.argv[1]
-    output_file = sys.argv[2]
+    
+#     data_root = sys.argv[1]
+#     output_file = sys.argv[2]  
+    data_root = '/home/kiwi/udn_data/Files/'
+    output_file = './tmp.txt'
     
     runUdnSegment(dataroot=data_root, outputfile=output_file,
                  action=par, unwanted_ptn=ptn)
@@ -191,9 +197,4 @@ if __name__=='__main__':
 #     runWordSegment(dataroot,'./lm_data/seg_all.txt')
 #     inputfile = '/home/kiwi/udn_data/training/sinica.corpus.txt'
 #     runSinica(inputfile,'./lm_data/sinica_word.txt')
-
-
-# In[ ]:
-
-
 
