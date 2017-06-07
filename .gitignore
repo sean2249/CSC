@@ -6,6 +6,7 @@
 *.json
 *.xlsx
 *.swp
+*.pdf
 nohup.out
 /pastCode/
 /other_people/

@@ -1,12 +1,13 @@
 
 # coding: utf-8
 
-# In[15]:
+# In[1]:
 
 # from model.case import CASE
 from model.model import LM, CASE, NCM
 
-
+import argparse
+import requests
 import os 
 import pickle
 import math
@@ -79,9 +80,12 @@ class CONFUSION:
         
 
 
-# In[17]:
+# In[19]:
 
 def viterbi_ng(seq, par, show=0):
+    # lm http
+    lm_get = 'http://140.112.91.62:5487/api/{}{}'.format
+    
     # LM,NCM required
     para = par.get('lmNcm_weight', None)
     ng_num = par.get('ngnum', None)
@@ -115,7 +119,21 @@ def viterbi_ng(seq, par, show=0):
                     batch_seq = pre_cand['seq'] + [cand[0]]
                     
                     # Compute before?
-                    batch_lm = lm.scoring(batch_seq[-ng_num:], ng_num) + pre_cand['score']
+#                     batch_lm = lm.scoring(batch_seq[-ng_num:], ng_num) + pre_cand['score']
+
+                    if batch_seq[-1] == '</s>':
+                        batch_seq[-1] == '<s>'
+        
+
+                    try:                        
+                        batch_lm = (
+                            requests.get(lm_get(ng_num,'||'.join(batch_seq[-ng_num:]))).json()['score']
+                            + pre_cand['score'])
+                    except:
+                        print('||'.join(batch_seq[-ng_num:]))
+                        print(requests.get(lm_get(ng_num,'||'.join(batch_seq[-ng_num:]))).json())
+
+
                     batch_score = (para[0] * batch_lm + para[1] * sect_ncm)
                     
                     if show==1: 
@@ -283,12 +301,46 @@ def batch(seq, par = {
 # 
 # lm.scoring('視障率',show=1)
 
-# In[11]:
+# In[10]:
 
-lm = LM(lm_filename)
+# lm = LM(lm_filename)
 ncm = NCM(channel_filename)
 con_preprocess = CONFUSION(con_filename, con_log_file='special_case4con.txt')
 con_preprocess.organize(label=['pre','error','corr'], threshold=10)
+
+
+# In[ ]:
+
+def process_command():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--token', required=True)
+    parser.add_argument('--test', required=True)
+    
+    parser.add_argument('--lm', default=0)
+    parser.add_argument('--ngnum', type=int, default=2)
+    
+    parser.add_argument('--ncm', default=0)
+    
+    return parser.parse_args()
+
+
+# In[ ]:
+
+def main(args, par):
+    result_name = './test_15/re_{}.txt'.format
+    
+    if args.lm != 0:
+        del lm 
+        lm = LM(args.lm)
+    if args.ncm != 0:
+        del ncm
+        ncm = NCM(args.ncm)
+    
+    
+    par['ngnum'] = args.ngnum
+    
+    
+    run_test(args.test, result_name(args.token), par)
 
 
 # In[ ]:
@@ -380,7 +432,7 @@ def t4(sys, par):
         run_test(test_data, result_name(token), par)
 
 
-# In[13]:
+# In[12]:
 
 if __name__=='__main__':
     par = {
@@ -391,7 +443,11 @@ if __name__=='__main__':
         'show':0
     }
     
-    t4(sys,par)
+#     t4(sys,par)
+    
+    args = process_command()
+    
+    main(args, par)
     
     
 

@@ -5,16 +5,16 @@
 
 from collections import namedtuple
 import pickle
-# import sys
-# import math
-# import re
-# from nltk import bigrams,trigrams
+import re
+import socket
+import xml.etree.ElementTree as ET
+from copy import deepcopy
 
 
-# In[ ]:
+# In[2]:
 
 class LM:
-    def __init__(self, lm_filename):
+    def __init__(self, lm_filename, unk=False):
         print('Loading language model %s ...' %(lm_filename))
         ngram_stats = namedtuple('lm_prob', 'p,bp')
         self.table = {}
@@ -24,9 +24,10 @@ class LM:
                 if len(seq)>=2:
                     (word, prob, backprob) = (tuple(seq[1].split()), float(seq[0]), 
                                         float(seq[2] if len(seq)==3 else 0.0))
-                    if len(word) > 3:
-                        break
                     self.table[word] = ngram_stats(prob, backprob)
+        
+        self.UNK = self.table[('<unk>',)].p if unk else -99
+        
     def begin(self,state):
         return ('<s>', state)
     
@@ -43,9 +44,12 @@ class LM:
                 return score + self.table[seq].p
             else:                                
                 back_prob = self.table.get(seq[:-1], failed).bp
-                if back_prob == 'NotFound':
+                if back_prob == 'NotFound':                    
                     if len(seq)==1:
-                        back_prob = -99
+                        if len(seq[0]) != 1:
+                            back_prob = self.scoring(list(seq[0]))
+                        else:
+                            back_prob = self.UNK
                     else:
                         back_prob = self.score_batch(seq[:-1])
                 score += back_prob                
@@ -76,7 +80,7 @@ class LM:
         return score                        
 
 
-# In[96]:
+# In[3]:
 
 class NCM:
     def __init__(self, channel_filename, ncm_global=[]):
@@ -100,7 +104,7 @@ class NCM:
         return query_cands
 
 
-# In[ ]:
+# In[4]:
 
 class CASE:
     def __init__(self, sentence, ncm):
@@ -109,7 +113,7 @@ class CASE:
         self.query=[]
         self.query.append('<s>')
         self.query.extend(list(sentence))
-        self.query.append('<s>')
+        self.query.append('</s>')
             
         # get candidate
         self.cands = []
@@ -117,11 +121,62 @@ class CASE:
             self.cands.append(ncm.get_cands(cur_ch))
 
 
-# In[ ]:
+# In[5]:
+
+class CKIP:
+    # Copy from https://github.com/ComposeAI/pyCKIP/blob/master/ckip/__init__.py
+    def __init__(self, username, password):
+        self._username = username
+        self._password = password
+        self._server = ('140.109.19.104', 1501)
+        
+        root = ET.Element('wordsegmentation', version='1.0')
+        ET.SubElement(root, 'option', showcategory='1')
+        ET.SubElement(root, 'authentication',
+                     username=self._username, password=self._password)
+        self._backup = root
+        
+    def cut(self, seq):
+        root = deepcopy(self._backup)
+        text_node = ET.SubElement(root, 'text')
+        text_node.text = seq
+        
+        request = ET.tostring(root, encoding='cp950')
+        
+        soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        soc.connect(self._server)
+        soc.send(request)
+        
+        response = soc.recv(len(seq)*10 + 8192).decode('cp950').encode('utf8')
+        
+        root = ET.fromstring(response)
+        
+        
+        status = root.find('processstatus')
+        if status.get('code') != '0':
+            raise RuntimeError(status.text)
+        else:
+            tmp = root.find('./result/sentence').text.split('\u3000')[1:]
+            seg = []            
+            for i in tmp:
+                r = re.match(r'(.*)\((.*)\)', i)
+                word, _ = r.groups()
+                seg.append(word)
+                
+        return seg
+
+
+# In[6]:
 
 if __name__=='__main__':
-    lm = LM('../sinica.corpus.seg.char.lm')
+#     lm = LM('../sinica.corpus.seg.char.lm')
+#     lm = LM('/home/kiwi/udn_data/training/sinica.seg.word.lm', True)
 #     lm2 = LM2('../sinica.corpus.seg.char.lm')
 
-    ncm_filename = 'G:/UDN/training_confusion/channelModel.pkl'
+#     ncm_filename = 'G:/UDN/training_confusion/channelModel.pkl'
+
+
+    ckip = CKIP('sean2249', '3345678')
+    t = ckip.cut('幸虧我話說得文')
+    print(t)
 
