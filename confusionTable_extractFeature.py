@@ -1,11 +1,12 @@
 
 # coding: utf-8
 
-# In[216]:
+# In[1]:
 
 import os 
 import sys
 import pickle
+import requests
 # import sys
 import argparse
 import pandas as pd
@@ -19,7 +20,7 @@ import random
 import time 
 
 
-# In[32]:
+# In[2]:
 
 from gensim.models import KeyedVectors
 
@@ -40,7 +41,7 @@ def extract_bigUnihan(filename):
 
 # ## unihan.csv (注音跟倉頡)
 
-# In[6]:
+# In[4]:
 
 def extract_unihan(unihan_filename):
     global dicBPMF, dicPhone, dicCangjie, dicCangjie2char
@@ -64,7 +65,7 @@ def extract_unihan(unihan_filename):
 
 # ### Unihan: sound similar
 
-# In[10]:
+# In[5]:
 
 def sound_extract_same(char):
     '''
@@ -73,7 +74,7 @@ def sound_extract_same(char):
     return list(set(ch for ph in dicBPMF[char] for ch in dicPhone[ph]))
 
 
-# In[11]:
+# In[6]:
 
 def sound_extract_tone(char):
     '''
@@ -93,7 +94,7 @@ def sound_extract_tone(char):
         
 
 
-# In[12]:
+# In[7]:
 
 def sound_extract_finalConsonant(char, toneKeep=True):
     '''
@@ -132,7 +133,7 @@ def sound_extract_finalConsonant(char, toneKeep=True):
     return output
 
 
-# In[13]:
+# In[8]:
 
 def sound_extract_similartConsonant(char, toneKeep=True):
     '''
@@ -214,7 +215,7 @@ def sound_extract_similartConsonant(char, toneKeep=True):
 
 # ### Unihan: same cangjie
 
-# In[14]:
+# In[9]:
 
 # No use
 def cangjie_extract_same(char):
@@ -230,7 +231,7 @@ def cangjie_extract_same(char):
 
 # ## zwt.titles.txt (字典)
 
-# In[7]:
+# In[10]:
 
 def extract_zwtTitle(lines):
     d = defaultdict(lambda: 0)
@@ -243,7 +244,7 @@ def extract_zwtTitle(lines):
 
 # ## radical.txt (部首)
 
-# In[8]:
+# In[11]:
 
 def radicalDic(lines):
     dicRadicalnum = defaultdict(list)
@@ -255,7 +256,7 @@ def radicalDic(lines):
     return dicRadicalnum, dicRadical
 
 
-# In[9]:
+# In[12]:
 
 def shape_similar(char):
     return list(set(ch for rnum in dicRadical[char] for ch in dicRadicalnum[rnum]))
@@ -263,7 +264,7 @@ def shape_similar(char):
 
 # ## Error_correct pair
 
-# In[16]:
+# In[13]:
 
 def extract_pairs(filelist):
     for filename, path in filelist.items():
@@ -348,7 +349,7 @@ def extract_pairs(filelist):
 # 1. Bakeoff-2013 not work
 # 2. sequence error not append 
 
-# In[17]:
+# In[14]:
 
 def extract_sentences(filelist):
     for filename, path in filelist.items():
@@ -423,7 +424,7 @@ def extract_sentences(filelist):
 
 # # 1. Extract from file
 
-# In[18]:
+# In[15]:
 
 # dataroot = 'G:/UDN/training_confusion/{}/'.format
 dataroot = '/home/kiwi/udn_data/training_confusion/{}/'.format
@@ -431,13 +432,13 @@ dataroot = '/home/kiwi/udn_data/training_confusion/{}/'.format
 
 # ## * Char information
 
-# In[19]:
+# In[16]:
 
 section_label = 'char_information'
 filelist = dict((file,dataroot(section_label)+file) for file in os.listdir(dataroot(section_label)))
 
 
-# In[20]:
+# In[17]:
 
 
 dicBPMF = defaultdict(list)
@@ -461,14 +462,25 @@ dicRadicalnum, dicRadical = radicalDic(
 dicFreq = extract_bigUnihan(filelist['unihan_utf8_new.csv'])
 
 
+# In[18]:
+
+ch_common = sound_SIGHAN.index
+
+
+# In[19]:
+
+with open('./ch_5401.txt', 'w',encoding='utf8') as fp:
+    fp.write('\n'.join(ch_common))
+
+
 # ## * Error_corr_pair
 
-# In[21]:
+# In[20]:
 
 section_label = 'error_corr_pair'
 
 
-# In[22]:
+# In[21]:
 
 filelist = dict((file,dataroot(section_label)+file) for file in os.listdir(dataroot(section_label)))
 confusion_pairs = dict()
@@ -478,9 +490,62 @@ for filename, ch_dict, word_dict in extract_pairs(filelist):
     confusion_pairs[filename] = (ch_dict,word_dict)
 
 
-# ## * Error_corr_sentence
+# In[22]:
+
+def combineConfusionpair(confusion_pairs):
+    combine_confusion_chPairs = defaultdict(lambda :set())
+    combine_confusion_wordPairs = defaultdict(lambda :set())
+    tmp = defaultdict(lambda :set())
+
+    for filename, (ch_dict, word_dict) in confusion_pairs.items():
+        if 'udn' not in filename:
+            for ch, cands in ch_dict.items():
+                combine_confusion_chPairs[ch].update(cands)    
+            for word, cands in word_dict.items():
+                tmp[word].add(cands)
+        else:
+            for ch, cands in ch_dict.items():
+                combine_confusion_chPairs[ch].update(set(cand for _, cand in cands))
+
+
+    sort_chpairs = sorted(combine_confusion_chPairs.items(), key=lambda x:-len(x[1]))
+    max_cands = max(len(cands) for _, cands in sort_chpairs)
+    min_cands = min(len(cands) for _, cands in sort_chpairs)
+    avg_cands = sum(len(cands) for _, cands in sort_chpairs)/len(sort_chpairs)
+    print('=== char pairs ')
+    print('Max cands in confusion pair = {}'.format(max_cands))
+    print('Min cands in confusion pair = {}'.format(min_cands))
+    print('Avg cands in confusion pair = {}'.format(avg_cands))
+
+    for ch, cands in tmp.items():
+        for cand in cands:
+            combine_confusion_wordPairs[cand].add(ch)
+
+    sort_wordpairs = sorted(combine_confusion_wordPairs.items(), key=lambda x:-len(x[1]))
+    max_cands = max(len(cands) for _, cands in sort_wordpairs)
+    min_cands = min(len(cands) for _, cands in sort_wordpairs)
+    avg_cands = sum(len(cands) for _, cands in sort_wordpairs)/len(sort_wordpairs)
+    print('=== word pairs')
+    print('Max cands in confusion pair = {}'.format(max_cands))
+    print('Min cands in confusion pair = {}'.format(min_cands))
+    print('Avg cands in confusion pair = {}'.format(avg_cands))
+
+    return combine_confusion_chPairs, combine_confusion_wordPairs
+
 
 # In[23]:
+
+combine_confusion_chPairs, combine_confusion_wordPairs = combineConfusionpair(confusion_pairs)
+combine_chPairs_filename = './confusionTable/rule_chPairs.pkl'
+combine_wordPairs_filename = './confusionTable/rule_wordPairs.pkl'
+
+pickle.dump(dict(combine_confusion_chPairs), open(combine_chPairs_filename, 'wb'))
+pickle.dump(dict(combine_confusion_wordPairs), open(combine_wordPairs_filename, 'wb'))
+
+
+# ## * Error_corr_sentence
+
+# In[24]:
 
 section_label = 'error_corr_sentence'
 filelist = dict((file,dataroot(section_label)+file) for file in os.listdir(dataroot(section_label)))
@@ -494,7 +559,7 @@ for filename, ch_dict, word_dict, seq_dict in extract_sentences(filelist):
 
 # ## * Char_probability (Language model)
 
-# In[24]:
+# In[25]:
 
 from model.model import LM
 
@@ -506,25 +571,25 @@ lm = LM(filename)
 
 # In[26]:
 
-section_label = 'pos'
-filelist = dict((file,dataroot(section_label)+file) for file in os.listdir(dataroot(section_label)))
+# section_label = 'pos'
+# filelist = dict((file,dataroot(section_label)+file) for file in os.listdir(dataroot(section_label)))
 
 
 # In[27]:
 
-pos_dict = defaultdict(set)
+# pos_dict = defaultdict(set)
 
-idx = 0
-with open(filelist['CKIP_Dictionary_UTF8.txt'], 'r', encoding='utf8') as fp:
-    # Ignore POS contain '!'
-    for line in fp:
-        data = line.split()
-        idx += 1
-        if len(data[0])==1:
-            pos_tag = data[2] if data[2].find('!')<0 else data[2][1:]
-            pos_dict[data[0]].add(pos_tag)
-        else:            
-            break
+# idx = 0
+# with open(filelist['CKIP_Dictionary_UTF8.txt'], 'r', encoding='utf8') as fp:
+#     # Ignore POS contain '!'
+#     for line in fp:
+#         data = line.split()
+#         idx += 1
+#         if len(data[0])==1:
+#             pos_tag = data[2] if data[2].find('!')<0 else data[2][1:]
+#             pos_dict[data[0]].add(pos_tag)
+#         else:            
+#             break
         
 
                 
@@ -547,15 +612,15 @@ with open(filelist['CKIP_Dictionary_UTF8.txt'], 'r', encoding='utf8') as fp:
 
 
 
-# In[29]:
+# In[28]:
 
-def pos_simplify(pos_tags, level=1):
-    pass
+# def pos_simplify(pos_tags, level=1):
+#     pass
     
     
-    output = set()    
-    for p in pos_tags:
-        pass
+#     output = set()    
+#     for p in pos_tags:
+#         pass
 
 
 # # same common
@@ -583,13 +648,13 @@ def pos_simplify(pos_tags, level=1):
 
 # ## fasttext 
 
-# In[100]:
+# In[29]:
 
 section_label = 'fasttext'
 filelist = dict((file,dataroot(section_label)+file) for file in os.listdir(dataroot(section_label)))
 
 
-# In[150]:
+# In[30]:
 
 # GOOD
 fasttext_model = KeyedVectors.load_word2vec_format(filelist['UDN.doc.char.skipgram.vec'])
@@ -597,7 +662,7 @@ fasttext_model = KeyedVectors.load_word2vec_format(filelist['UDN.doc.char.skipgr
 
 # ## TF-IDF (UDN)- NOT USE
 
-# In[64]:
+# In[31]:
 
 def load_file(filepath):
     with open(filepath, 'r') as fp:
@@ -605,13 +670,13 @@ def load_file(filepath):
             yield line.strip().split()
 
 
-# In[84]:
+# In[32]:
 
 def tf_idf(N, tf, df):
     return tf * math.log(N / df)
 
 
-# In[190]:
+# In[33]:
 
 section_label = 'tfidf'
 filelist = dict((file,dataroot(section_label)+file) for file in os.listdir(dataroot(section_label)))
@@ -619,7 +684,7 @@ filelist = dict((file,dataroot(section_label)+file) for file in os.listdir(datar
 
 # # 2. Compare function
 
-# In[55]:
+# In[34]:
 
 def fasttext_compare(ch_x, ch_y):
     try:
@@ -628,7 +693,7 @@ def fasttext_compare(ch_x, ch_y):
         return 0.0
 
 
-# In[4]:
+# In[35]:
 
 def shape_compare_SIGHAN(ch_x, ch_y):
     '''
@@ -648,7 +713,7 @@ def shape_compare_SIGHAN(ch_x, ch_y):
     return (out1, out2)
 
 
-# In[5]:
+# In[36]:
 
 def sound_compare_SIGHAN(ch_x, ch_y):
     '''
@@ -670,7 +735,7 @@ def sound_compare_SIGHAN(ch_x, ch_y):
         return 0
 
 
-# In[56]:
+# In[37]:
 
 def sound_compare_unihan(ch_x,ch_y):
     if ch_y in sound_extract_same(ch_x):
@@ -691,7 +756,7 @@ def shape_compare_unihan(ch_x,ch_y):
         return 0
 
 
-# In[15]:
+# In[38]:
 
 def cangjie_compare_unihan(ch_x,ch_y):
     '''
@@ -743,7 +808,12 @@ def cangjie_compare_unihan(ch_x,ch_y):
 
 # # 3. Compare between character
 
-# In[225]:
+# In[39]:
+
+CHARPORT = 5487
+
+
+# In[40]:
 
 def comparison4confusion(ch_chunk):
     '''Similarity between two characters
@@ -805,17 +875,20 @@ def comparison4confusion(ch_chunk):
     log.append(tmp)
     score += tmp        
     
-    
+    lm_get = 'http://140.112.91.62:{}/api/{}{}'.format    
     
     # 7. float 
     # log probability 
     tmp = lm.scoring(ch_x)
+#     tmp = requests.get(lm_get(CHARPORT, 1, ch_x)).json()['score']
     log.append(tmp)
 #     score -= tmp
     
     # 8. float 
     # log probability 
     tmp = lm.scoring(ch_y)
+#     tmp = requests.get(lm_get(CHARPORT, 1, ch_y)).json()['score']
+    
     log.append(tmp)
 #     score -= tmp
         
@@ -842,21 +915,27 @@ def comparison4confusion(ch_chunk):
     return (score,log)
 
 
-# In[120]:
+# In[41]:
 
 # confusion_pairs['1新編常用錯別字門診.txt'][0]
 
 
-# In[227]:
+# In[47]:
 
 # comparison4confusion(('事','事'))
 
 
+# In[48]:
+
+# comparison4confusion(('世','氏'))
+
+
 # # Char_comparison
 
-# In[217]:
+# In[44]:
 
 def extractFeature(outputfilename, process_cnt, test=0):
+    # If ch_x not in 5000 common character, choose the best as candidates
     ch_label = set(dicBPMF.keys()).union(set(sound_SIGHAN.index))
     ch_n_label = random.choices(list(ch_label),k=test) if test>0 else ch_label    
 
@@ -871,10 +950,15 @@ def extractFeature(outputfilename, process_cnt, test=0):
             ch_chunk = [(ch_x, ch_y) for ch_y in ch_n_inside]
 
             scores = pool.map(comparison4confusion, ch_chunk)
-
-            for idx,(_,ch_y) in enumerate(ch_chunk):
-                if scores[idx][0]>5.0:
-                    bigDict[ch_x][ch_y] = scores[idx]
+            
+            if ch_x in ch_common:
+                for idx,(_,ch_y) in enumerate(ch_chunk):
+                    if scores[idx][0]>5.0:
+                        bigDict[ch_x][ch_y] = scores[idx]
+            else:
+                best_score_idx = scores.index(max(scores))
+                ch_y = ch_chunk[best_score_idx][1]
+                bigDict[ch_x][ch_y] = scores[best_score_idx]
 
     with open(outputfilename, 'wb') as fp:
         pickle.dump(bigDict,fp)
@@ -882,7 +966,7 @@ def extractFeature(outputfilename, process_cnt, test=0):
     print(time.clock()-start_time)
 
 
-# In[218]:
+# In[45]:
 
 def process_command():
     parser = argparse.ArgumentParser()
@@ -893,10 +977,9 @@ def process_command():
     return parser.parse_args()
 
 
-# In[215]:
+# In[46]:
 
 if __name__=="__main__":
-    args = process_command()
-    
+    args = process_command()    
     extractFeature(args.output, args.process, args.count)
 
