@@ -5,384 +5,356 @@
 
 import os
 from bs4 import BeautifulSoup
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 import re
 
 
-# ### Class Name
-# * 1  Add
+# ### Class Name 
+# * 1  Add 
 # * 3  Delete
 # * 9  Hightlight
 
 # In[2]:
 
-def special_debug():
+def seperateSeq(seq):
+    '''Seperate passage into small sentences
+    Args:
+        seq (string): string of passage 
+    Return:
+        output (list): list of sentences            
+    '''
+    pattern = re.compile('[，。！？]')
+    
+    pre_idx=0
     output = []
-    for batch in soup.find_all('p'):
-        for section in batch.contents:
-            if section.name == None:
-
-                print(0, '==\t', section.string)
-            elif section.name == 'font':
-                if section['class'][0] == '1':
-                    print(1, 'Add\t', section.string)
-                elif section['class'][0] == '2':
-                    print(2, section.string)
-                elif section['class'][0] == '3':
-                    print(3, section.string)
-    #                 if pre.action=='3':
-    #                     pre.string += section.string
-    #                 else:
-    #                     output.append(pre)
-    #                     pre = tag_attri('3',section.string)
-
-                else:
-                    print('====\nWrong\n%s\n====\n' % (section.string))
-            else:
-                print('wrong wrong')
+    for idx, ch in enumerate(seq):
+        if pattern.search(ch):
+            tmp = seq[pre_idx:idx+1]
+            output.append(tmp)
+            pre_idx = idx+1
+    
+    if pre_idx<len(seq):
+        tmp = seq[pre_idx:len(seq)]
+        output.append(tmp)
+        
+    return output 
 
 
 # In[3]:
 
-def seperateSeq(seq):
-    pattern = re.compile('[，。！？]')
+# filename = '/home/kiwi/udn_data/Files/20160618/TEXT/113-06684-003B_20160618171735_03684.TXT'
 
-    pre_idx = 0
-    output = []
-    for idx, ch in enumerate(seq):
-        if pattern.search(ch):
-            tmp = seq[pre_idx:idx + 1]
-            output.append(tmp)
-            pre_idx = idx + 1
-
-#     print(pre_idx, len(seq))
-    if pre_idx < len(seq):
-        tmp = seq[pre_idx:len(seq)]
-        output.append(tmp)
-
-    return output
+# with open(filename, 'rb') as fp:
+#     data = fp.read().decode('big5-hkscs', 'ignore')
+#     soup = BeautifulSoup(data)
 
 
 # In[4]:
 
-def extract(soup):
-    tag_attri = namedtuple('tag_attri', 'action, string')
+def extract(soup):    
+    '''Extract action/content from soup, seperated with comma.    
+    
+    action: 
+        * 0- default
+        * 1- add
+        * 3- delete
+        * 'x'- end of sentence
+    
+    Args:
+        soup (BeautifulSoup.soup): the soup element of document 
+        
+    Return:
+        output (int,str): tuple (action of characters, characters)    
+        
+    '''
+    tag_attri = namedtuple('tag_attri','action, string')
     pre = tag_attri('-5', '')
     output = []
+    # Extract section string corrsponding action 
     for batch in soup.find_all('p'):
-        for section in batch.contents:
-            if section.name == None:
+        for section in batch.contents:           
+            if section.name==None:
                 cur_action = '0'
-            elif section.name == 'font':
+            elif section.name=='font':
                 cur_action = section['class'][0]
             else:
                 continue
                 print(section)
                 cur_action = '-1'
                 print('wrong wrong')
-#                 return -1
-
-            if section.string == None:
+            
+            if section.string==None:
                 continue
-#             print(section.string)
-            insert = section.string.replace('\n', '')
-#             print(insert)
-            if pre.action == cur_action:
-                i = pre.string + insert
-                pre = tag_attri(cur_action, i)
+            insert = section.string.replace('\n','')
+            if pre.action == cur_action:                
+                i = pre.string+insert
+                pre = tag_attri(cur_action, i)                                
             else:
                 output.append(pre)
-                pre = tag_attri(cur_action, insert)
-#     print(pre.string, section.string)
-#     if pre.string!=section.string:
+                pre = tag_attri(cur_action, insert)                   
     output.append(pre)
 
-    # Match action and character
+    # Match action and character 
     seq_idx = []
     seq_ch = ''
     for term in output:
-        #         if term.string==None:
-        #             continue
         seq_idx = seq_idx + [int(term.action) for _ in range(len(term.string))]
         seq_ch = seq_ch + term.string
 
-    # Seperate sequence by comma
+    # Seperate sequence by comma 
     seq_seperate = seperateSeq(seq_ch)
-
+    
     total_length = 0
     batch = []
     for sub in seq_seperate:
-        check = seq_idx[total_length + len(sub) - 1]
-
+        check = seq_idx[total_length+len(sub)-1]
+        
         # =====================
-        # Discard those data ends with deleted comma
+        # Discard those data ends with deleted action of comma 
         # =====================
 
         if check != 3:
-            seq_idx[total_length + len(sub) - 1] = 'x'
-            batch.append((seq_idx[total_length:total_length + len(sub)], sub))
-
-        total_length += len(sub)
-
+            seq_idx[total_length+len(sub)-1] = 'x'
+            batch.append((seq_idx[total_length:total_length+len(sub)], sub))
+        
+        total_length += len(sub)    
+    
     return batch
 
 
 # In[5]:
 
-# Skip the first sequence for the name of reporter
-# Situation:
-# preprocess: unnecessary comma (abandon this sequence or delete comma only)
-# 1. 0 only- original content
-# 2. 0/1 only- add some word
-# 3. 0/3 only- delete some word
-# 4. 1 only- add content
-# 5. 3 only- delete content
-# 6. 0/1/3 only- Special situation:
-#  - 1/3 nearby: replace
-#  - 1/3 not nearby: add/delete some word with different purpose
-
-def sepCase(batch):
-    trace = 0
-#     pattern = re.compile('「」【】；：')
-#     ptn = pattern.findall(cur_seq)
-#     if ptn == ['「', '」'] or ptn == ['【', '】']:
-#         continue
+def sepCase(batch, show=0):
+    '''Classify the action/content into 6 cases
+    
+    Args:
+        batch (list(int), str): datatype from the function of 'extract'
+    
+    Yields:
+        return different case
+    
+    '''    
     for cur_idx, cur_seq in batch:
         tag = set(cur_idx[:-1])
-        idx_all = set(range(len(cur_idx)))
 
         # 1. 0 only- original content
         if tag == set([0]):
-            if trace:
-                print('1', cur_idx, cur_seq)
-
-            out = cur_seq
-            sep = ''
-
             yield('case1', cur_seq, cur_idx)
 
         # 2. 0/1 only- add some word
         elif tag == set([0, 1]):
-            if trace:
-                print('2', cur_idx, cur_seq)
             yield('case2', cur_seq, cur_idx)
 
         # 3. 0/3 only- delete some word
         elif tag == set([0, 3]):
-            if trace:
-                print('3', cur_idx, cur_seq)
             yield('case3', cur_seq, cur_idx)
 
         # 4. 1 only- add content
         elif tag == set([1]):
-            if trace:
-                print('4', cur_idx, cur_seq)
             yield('case4', cur_seq, cur_idx)
+
 
         # 5. 3 only- delete content
         elif tag == set([3]):
-            if trace:
-                print('5', cur_idx, cur_seq)
-
             yield('case5', cur_seq, cur_idx)
 
-        # 6. 0/1/3 only- Special situation:
-        #  - 1/3 nearby: replace
+        # 6. 0/1/3 only- Special situation: 
+        #  - 1/3 nearby: replace 
         #  - 1/3 not nearby: add/delete some word with different purpose
-        elif tag == set([0, 1, 3]):
-            if trace:
-                print('6', cur_idx, cur_seq)
-
-            (c6_seq, c6_cor) = case6(cur_idx, cur_seq)
-
-            if c6_cor != 0:
-                yield ('case6', c6_seq, c6_cor)
+        elif tag == set([0,1,3]):
+            yield('case6', cur_seq, cur_idx)                
 
 
-# In[12]:
+# In[6]:
 
-def case6(cur_idx, cur_seq, trace=0):
+def case6Process(cur_seq, cur_idx, 
+                 select_ptn='(0130)|(0310)', 
+                 kick_ptn='[『「」（：）()』／；●】【~～〈〉《》＆\-、★\—\'％%‧○…■\s]', 
+                 show=0):
+    
+#     def tagChange(in_idx, in_seq):
+    
+    
     out_idx = list(cur_idx)
     out_seq = list(cur_seq)
     corr = []
 
     _idxs = ''.join(str(x) for x in cur_idx)
-    pattern = re.compile('(0130)|(0310)')
+    pattern = re.compile(select_ptn)
     ptn = pattern.finditer(_idxs)
-
+    
     # =====
-    # Remove comma replacement
+    # Remove unwanted symbols
     # =====
-    kick_ptn = re.compile('[『「」（：）()』／；●】【~～〈〉《》＆\-、★\—\'％%‧○…■\s]')
-    kick_ptn2 = re.compile('[0-9A-Za-z]')
-
-    # 5: kick tag
+    # NOOOO USE
+#     KICKPTN = re.compile(kick_ptn) 
+#     KICKPTN2 = re.compile('[0-9A-Za-z]')
+    
+    #####
     change = 0
     for p in ptn:
         _start = p.start()
-        if p.group() == '0130':
-            if out_seq[_start + 1] == out_seq[_start + 2]:
-                continue
-
+        if out_seq[_start+1] == out_seq[_start+2]: 
+            continue
+    
+        # 4- the error(keep) char
+        # 5- the correct(deleted) char
+        if p.group() == '0130':                    
             change = 1
-            corr.append(out_seq[_start + 1])
-            out_seq[_start + 1] = ''
-            out_idx[_start + 1] = 5
-
-            out_idx[_start + 2] = 4
-
-        elif p.group() == '0310':
-            if out_seq[_start + 1] == out_seq[_start + 2]:
-                continue
-
+            out_idx[_start+1] = 5
+            out_idx[_start+2] = 4
+            corr.append(out_seq[_start+1])
+            out_seq[_start+1] = ''
+        elif p.group() == '0310':            
             change = 1
-            out_idx[_start + 1] = 4
-
-            corr.append(out_seq[_start + 2])
-            out_seq[_start + 2] = ''
-            out_idx[_start + 2] = 5
-
-        if kick_ptn.search(corr[-1]) != None or kick_ptn2.search(corr[-1]) != None or corr[-1] == '\xa0':
-            return (cur_seq, 0)
-
-    # =============
-    # Don't handle the situation over the pattern
-    # =============
+            out_idx[_start+1] = 4
+            out_idx[_start+2] = 5            
+            corr.append(out_seq[_start+2])
+            out_seq[_start+2] = ''
+        if corr[-1]=='\xa0':
+            return (cur_seq, -1)            
     if change == 0:
-        return (cur_seq, 0)
-
+        return (cur_seq, -1)
+    
     # Remove character with tag-3 delete
     _idxs = ''.join(str(x) for x in out_idx)
     for p in re.finditer(r'3', _idxs):
         start = p.start()
         out_seq[start] = ''
         out_idx[start] = 5
-    out_idx = [i for i in out_idx if i != 5]
+    out_idx = [i for i in out_idx if i!=5]
     out_seq = ''.join(out_seq)
-
+    
     # Error index start from 1
-    # KICK unwanted error-correction pair based on re.pattern
     # Create list(tuple(position, correct))
     _idxs = ''.join(str(x) for x in out_idx)
     out_cor = []
     if len(out_idx) == len(out_seq):
         for idx, p in enumerate(re.finditer(r'4', _idxs)):
-            #             print(out_seq[p.start()], corr[idx])
-            out_cor.append((p.start() + 1, corr[idx]))
-
+            out_cor.append((p.start()+1, corr[idx]))
+            
     return (out_seq, out_cor)
 
 
-# In[14]:
+# In[7]:
 
-def document(inputfile, outputname):
-    (ip_cor_name, ip_error_name, gt_name) = outputname
-    (inputname, document_id) = inputfile
+def document(inputname, document_id, kick_ptn='', encoding='big5'):
+    '''Read file and output into file
+    Args:
+        inputfile (list): [the filename of website, the token of filename]
+        outputname (str): the filename for testdata
+        XXX outputname (list): [the filename for testdata file, all correct sequence]
+        kick_ptn (str): the pattern which haves to kick off 
+        encoding (str): the encoding of file (big5/utf8)
+    
+    Return:
+         1  success
+        -1  failed
+    '''
+    
+#     print(inputname)
+    
 
-    with open(inputname, 'rb') as fp:
-        data = fp.read().decode('big5-hkscs', 'ignore')
-        soup = BeautifulSoup(data)
-
-#     with open(inputname, 'r', encoding='utf8') as fp:
-#         soup = BeautifulSoup(fp)
-
-    batch = extract(soup)
-
-# 1. 0 only- original content
-# 2. 0/1 only- add some word
-# 3. 0/3 only- delete some word
-# 4. 1 only- add content
-# 5. 3 only- delete content
-# 6. 0/1/3 only- Special situation:
-#  - 1/3 nearby: replace
-#  - 1/3 not nearby: add/delete some word with different purpose
-    kick_ptn = re.compile(r'[0-9A-Za-z]')
-
-    with open(ip_cor_name, 'a', encoding='utf8') as icp,     open(gt_name, 'a', encoding='utf8') as gtp,    open(ip_error_name, 'a', encoding='utf8') as iep:
-        for idx, (c, seq, special) in enumerate(sepCase(batch)):
-            sentence_id = '%s-%d' % (document_id, idx)
-
-            if c == 'case6' and kick_ptn.search(seq) == None:
-                iep.write('%s, %s\n' % (sentence_id, seq))
-                gtp.write('%s' % sentence_id)
-                for item in special:
-                    gtp.write(', %d, %s, %s' %
-                              (item[0], seq[item[0] - 1], item[1]))
-                gtp.write('\n')
-
-            elif c == 'case1' or c == 'case2' or c == 'case4':
-                icp.write('%s, %s\n' % (sentence_id, seq))
-
-
-# In[8]:
-
-def docu_debug(inputname):
-    #     with open(inputname, 'rb') as fp:
-    #         data = fp.read().decode('big5-hkscs', 'ignore')
-    #         soup = BeautifulSoup(data)
-
-    with open(inputname, 'r', encoding='utf8') as fp:
-        soup = BeautifulSoup(fp)
-
-    batch = extract(soup)
-#     return batch
-    for idx, (c, seq, special) in enumerate(sepCase(batch)):
-        if c == 'case6':
-            print(c, seq, special)
+    if encoding == 'big5':
+        with open(inputname, 'rb') as fp:
+            data = fp.read().decode('big5-hkscs', 'ignore')
+            soup = BeautifulSoup(data)
+    elif encoding == 'utf8': 
+        with open(inputname, 'r', encoding='utf8') as fp:
+            soup = BeautifulSoup(fp)           
+    else:
+        print('wrong encoding parameters')
+        return -1
+        
+    batch = extract(soup)    
+    
+    output = dict()
+    for idx, case in enumerate(sepCase(batch)):
+        sentence_id = '{}-{}'.format(document_id, idx)
+        if case[0] == 'case6':
+            seq, seq_info = case6Process(case[1], case[2])
+            if seq_info != -1:
+                try:
+                    error_info = '|||'.join(['{}|||{}'.format(idx,ch) for idx, ch in seq_info])
+                except:
+                    print(seq, seq_info)
+                    return -1
+                output[(seq, error_info)] = sentence_id
+    
+    return output
 
 
-# In[15]:
+# In[10]:
 
-if __name__ == '__main__':
-
-    token = 'withError'
-    dataroot = 'G:/UDN/Files/'
-
-    ip_cor_name = './extractUDN/{}_correct.txt'.format(token)
-    ip_err_name = './extractUDN/{}_input.txt'.format(token)
-    gt_name = './extractUDN/{}_groundtruth.txt'.format(token)
-    error_file = './extractUDN/{}_errorfile.txt'.format(token)
-    outputname = (ip_cor_name, ip_err_name, gt_name)
-
-    if os.path.exists(error_file):
-        print('Clean %s' % (error_file))
-        os.remove(error_file)
-
-    for file in outputname:
-        if os.path.exists(file):
-            print('Clean %s' % (file))
-            os.remove(file)
-
-    log_file = './extractUDN_log.txt'
-    sfp = open(log_file, 'w', encoding='utf8')
-    efp = open(error_file, 'w', encoding='utf8')
-
-    for dirPath, dirName, filelist in os.walk(dataroot, topdown=False):
-        if not(re.search(r'/201......TEXT$', dirPath)):
-            #         if not(re.search(r'8/201608..$', dirPath)):
+def create_rawdata(dataroot, output_root, kick_ptn):
+    if not os.path.isdir(output_root):
+        os.mkdir(output_root)
+        
+    seqfile = os.path.join(output_root, 'all_seq.txt')
+    groundtruthfile = os.path.join(output_root, 'all_gt.txt')
+    logfile = os.path.join(output_root, 'log.txt')
+    badfile = os.path.join(output_root, 'bad_log.txt')
+    
+    seqfp = open(seqfile, 'w', encoding='utf8')
+    gtfp = open(groundtruthfile, 'w', encoding='utf8')
+    logfp = open(logfile, 'w', encoding='utf8')
+    badfp = open(badfile, 'w', encoding='utf8')    
+    
+    idx = 0
+    totalfilecnt = 0
+    for dirpath, _, filelist in os.walk(dataroot, topdown=False):
+        if not(re.search(r'/201...../TEXT$', dirpath)):
+    #         if not(re.search(r'8/201608..$', dirPath)):
             continue
 
-        print(dirPath)
-        fileSet = set()
-        for file in filelist:
-            ptn = re.search(r'-.....-...', file)
-            if ptn:
-                if ptn.group() not in fileSet:
-                    fileSet.add(ptn.group())
-#                     inputfile = ('%s/%s' %(dirPath, file), dirPath[-4:]+ptn.group())
-                    inputfile = ('%s/%s' % (dirPath, file),
-                                 dirPath[-9:-5] + '-' + file[:ptn.end()])
-                    sfp.write(inputfile[0] + '\n')
+        print(dirpath)
 
-                    try:
-                        document(inputfile, outputname)
-                    except:
-                        efp.write(inputfile[0] + '\n')
-
+        file_dict = defaultdict(list)
+        file_set = set()
+        totalfilecnt += len(filelist)
+        for filename in filelist:
+            ptn = re.search(r'^.*-.....-...', filename)
+            filepath = os.path.join(dirpath, filename)
+            if not ptn:
+                badfp.write('{}\n'.format(filepath))
+                continue
+            if ptn.group() in file_set:
+                file_dict[ptn.group()].append((filename, filepath))
             else:
-                with open(error_file, 'a', encoding='utf8') as fp:
-                    fp.write('%s/%s\tptn.group()\n' % (dirPath, file))
+                file_set.add(ptn.group())
+                file_dict[ptn.group()].append((filename, filepath))            
 
-    sfp.close()
-    efp.close()
-    print('--- FINISHED ---')
+        for filetoken, filelists in file_dict.items():
+            document_seqs = dict()
+            for (filename, filepath) in filelists:
+                logfp.write('{}\n'.format(filepath))
+                cur_seqs = document(filepath, os.path.splitext(filename)[0], KICK_PTN, 'big5')
+                document_seqs.update(cur_seqs)
+
+            for section, docu_id in document_seqs.items():
+                seqfp.write('{}|||{}\n'.format(docu_id, section[0]))
+                gtfp.write('{}|||{}\n'.format(docu_id, section[1]))
+
+    logfp.write('========\nTotal file = {}\n======='.format(totalfilecnt))
+    print('== Finish raw data ===')
+    seqfp.close()
+    gtfp.close()
+    logfp.close()
+    badfp.close()
+
+
+# In[11]:
+
+if __name__ == '__main__':
+    dataroot = '/home/kiwi/udn_data/Files/'
+    outputroot = './extractUDN_new/rawdata'
+    KICK_PTN = ''
+
+    create_rawdata(dataroot, outputroot ,KICK_PTN)
+    
+
+
+# In[ ]:
+
+
+
